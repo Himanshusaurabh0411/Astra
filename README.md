@@ -1,6 +1,6 @@
 # 🚀 Astra — Hackathon Project
 
-> Built for [Hackathon Name / Track].
+> Built with **Google Antigravity (AGY)** for [Hackathon Name / Track].
 
 ---
 
@@ -22,29 +22,31 @@
 ## 🛠️ Tech Stack & Architecture
 - **Frontend**: [e.g. Next.js / React / Tailwind CSS]
 - **Backend**: [e.g. Node.js / FastAPI / Supabase]
-- **AI Models / APIs**: [e.g. Claude 3.5 Sonnet / Gemini 2.5]
+- **AI Models / APIs**: [e.g. Gemini 2.5 / Antigravity Agents]
 
 ---
 
-## ⚡ Developer & Agent Workflows
+## ⚡ Antigravity Agent Configuration
 
-This repository is pre-configured with the **Claude Code Agentic Playbook** architecture:
+This repository is configured natively for **Google Antigravity (AGY)**:
 
-### 🤖 Built-In Slash Commands & Skills
-- `/plan-feature [name]`: Interviews and generates an architectural plan before touching code.
-- `/fix-issue [desc]`: Reproduces bugs with a failing test first, fixes, and verifies.
-- `/verify`: Runs all build, lint, and type checks before committing.
-- `/commit`: Formats and generates clean conventional commits.
-- `/security-audit`: Runs the **5 Pre-Launch Security Checks** (Secrets, PII data flow, Pre-deploy checklist, Deep logic, and Attacker perspective review).
+### 📜 Rules & Directives
+- **`GEMINI.md` / `AGENTS.md`**: Core hackathon principles enforcing demo-first reliability, rapid scoping, and zero secret leaks.
+- **`.agents/rules/`**:
+  - `security.md`: Enforces parameterization, zero hardcoded secrets, and input sanitization.
+  - `code-quality.md`: Enforces minimal diffs, visual loading states, and error handling.
 
-### 👥 Subagents
-- `@code-reviewer`: Senior reviewer checking correctness, security, and edge cases on git diffs.
-- `@test-runner`: Lightweight subagent running test suites and summarizing failures.
-- `@debugger`: Diagnoses bugs with hypothesis-driven testing.
+### 🧠 Antigravity Skills (`.agents/skills/`)
+- **`plan-feature`**: Interviews and architects an implementation plan before touching code.
+- **`fix-issue`**: Rapid diagnosis and failing-test verification loop.
+- **`verify`**: Pre-commit build, lint, and type check.
+- **`commit`**: Conventional git commit generator.
+- **`security-audit`**: Runs the **5 Pre-Launch Security Checks** (Secrets, PII data flow, Pre-deploy checklist, Deep logic, and Attacker perspective review).
+- **`mvp-scoper`**: Trims any hackathon idea down to a winning 2-minute "Hero Feature".
+- **`demo-pitch`**: Generates a 3-slide pitch formula and judge Q&A defense.
 
-### 🔒 Enforced Security Hooks
-- `PreToolUse`: Automated hook script (`.claude/hooks/protect-paths.sh`) preventing accidental edits to `.env` or sensitive files.
-- `Notification`: Desktop alert when input is required.
+### 🔒 Lifecycle Hooks (`.agents/hooks.json`)
+- **`PreToolUse`**: Enforced safety hook (`.agents/hooks/protect-paths.sh`) guarding `.env` and internal git structures from accidental overwrite.
 
 ---
 
@@ -60,7 +62,7 @@ cp .env.example .env
 # 3. Run development server
 npm run dev
 
-# 4. Run pre-launch security audit
+# 4. Run pre-launch 5-point security audit
 npm run audit
 ```
 

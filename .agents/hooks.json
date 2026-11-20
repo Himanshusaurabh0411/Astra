@@ -1,0 +1,15 @@
+{
+  "safety-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "command": "./.agents/hooks/protect-paths.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
