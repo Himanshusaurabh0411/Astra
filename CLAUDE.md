@@ -1,25 +1,25 @@
-# Project: Astra (Hackathon Edition)
-Astra is an AI-powered project built for rapid hackathon delivery. The priority is a flawless 2-minute demo flow, rock-solid core user loop, and clean technical architecture.
+# Project: Astra
+Hackathon development workspace configured with the 6-layer Agentic Playbook architecture.
 
-## Golden Hackathon Rules
-1. **Demo First**: The "Happy Path" shown to judges must never fail. Always gracefully fallback/mock external API timeouts.
-2. **Ruthless Scoping**: Build the core differentiator first. Polish UI/UX before adding secondary features.
-3. **Fail Gracefully**: Every network call / LLM call must have a try/catch with friendly UI toasts, never blank screens.
-4. **No Secrets in Git**: All API keys live in `.env` (gitignored). Keep a sanitized `.env.example`.
-
-## Commands (Update when stack is initialized)
-- Install: `npm install`
+## Commands (Fill in when stack is chosen tomorrow)
+- Install: `npm install` (or `pnpm i` / `uv pip install -r requirements.txt`)
 - Dev: `npm run dev`
+- Test: `npm test`
 - Build check: `npm run build`
-- Quick lint: `npm run lint`
+- Security check: `npm run audit` (or `./scripts/security-check.sh`)
 
-## Conventions & Style
-- Modern TypeScript / JavaScript or Python. Keep architecture clean and modular.
-- Separate UI components, API services, and mock fallback data.
-- State handling: Always show visual loaders (spinners/skeletons) for async operations so the demo feels alive.
+## Conventions
+- Clean, modular architecture. Keep business logic separate from UI components.
+- Strong typing; avoid `any`. Validate external inputs with schemas (e.g. Zod / Pydantic).
+- Error handling: Every network/AI call must handle timeouts and errors gracefully (never blank the UI).
+- Never hardcode secrets; read only from environment variables.
 
-## Workflow
-- **Plan**: Always define the demo script first before coding any auxiliary feature.
-- **Build**: Implement the core flow end-to-end (Frontend -> Backend/AI -> Output).
-- **Verify**: Test on clean browser / incognito before presentation.
-- **Ship**: Deploy early (e.g. Vercel, Railway, Render) so judges can test on their phones if needed.
+## Daily Workflow
+1. **Explore**: Read relevant files without modifying them.
+2. **Plan**: Use `/plan-feature` for anything touching multiple files before coding.
+3. **Code**: Implement step-by-step; write tests for critical paths.
+4. **Verify**: Run `/verify` and have `@code-reviewer` inspect changes.
+5. **Commit**: Use `/commit` for clean, conventional commits.
+
+## Pre-Launch Checks
+- Run `/security-audit` to execute the 5-point security verification before presentation or submission.
