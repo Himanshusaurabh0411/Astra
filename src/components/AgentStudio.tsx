@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
-import { Sparkles, Play, CheckCircle2, Loader2, Code, Terminal, Clock, ShieldAlert } from 'lucide-react'
+import React, { useState, useMemo } from 'react'
+import { Sparkles, Play, CheckCircle2, Loader2, Code, Terminal, Clock, ShieldAlert, AlertCircle } from 'lucide-react'
 import { AgentExecution } from '../types'
 import { sampleRuns } from '../data/mockData'
+import { sanitizeInput, redactSensitiveData, ClientRateLimiter } from '../utils/security'
 
 interface AgentStudioProps {
   demoMode: boolean
@@ -15,15 +16,26 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({ demoMode, onAddRun }) 
   const [currentRun, setCurrentRun] = useState<AgentExecution | null>(sampleRuns[0])
   const [activeStepIndex, setActiveStepIndex] = useState<number>(3)
   const [showJson, setShowJson] = useState<boolean>(false)
+  const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
+
+  const rateLimiter = useMemo(() => new ClientRateLimiter(6, 10000), [])
 
   const handleSelectPreset = (idx: number) => {
     setSelectedPreset(idx)
     setCustomPrompt(sampleRuns[idx].prompt)
     setCurrentRun(sampleRuns[idx])
     setActiveStepIndex(3)
+    setRateLimitWarning(null)
   }
 
   const handleExecute = () => {
+    if (!rateLimiter.canExecute()) {
+      setRateLimitWarning('Rate limit active: Please wait a few seconds before triggering another run.')
+      return
+    }
+    setRateLimitWarning(null)
+
+    const sanitizedPrompt = sanitizeInput(customPrompt, 1000)
     setIsRunning(true)
     setActiveStepIndex(0)
 
@@ -31,7 +43,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({ demoMode, onAddRun }) 
     const newRun: AgentExecution = {
       ...baseData,
       id: `run-${Math.floor(1000 + Math.random() * 9000)}`,
-      prompt: customPrompt,
+      prompt: sanitizedPrompt,
       executionTime: (Math.random() * 0.8 + 0.9).toFixed(2) + 's',
       metrics: {
         confidence: Number((0.96 + Math.random() * 0.038).toFixed(3)),
@@ -79,17 +91,30 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({ demoMode, onAddRun }) 
 
       {/* Input Area */}
       <div className="glass-panel p-5 rounded-2xl border border-slate-800">
-        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-          Autonomous Agent Task Brief
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+            Autonomous Agent Task Brief
+          </label>
+          <span className={`text-[11px] font-mono ${customPrompt.length > 900 ? 'text-amber-400 font-bold' : 'text-slate-500'}`}>
+            {customPrompt.length}/1000 chars
+          </span>
+        </div>
         <textarea
           value={customPrompt}
+          maxLength={1000}
           onChange={(e) => setCustomPrompt(e.target.value)}
           rows={3}
           disabled={isRunning}
           placeholder="Describe any autonomous multi-step task..."
           className="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono transition"
         />
+
+        {rateLimitWarning && (
+          <div className="mt-3 p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{rateLimitWarning}</span>
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -196,7 +221,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({ demoMode, onAddRun }) 
 
               {showJson ? (
                 <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-400 overflow-x-auto max-h-72">
-                  {JSON.stringify(currentRun, null, 2)}
+                  {redactSensitiveData(JSON.stringify(currentRun, null, 2))}
                 </pre>
               ) : (
                 <div className="space-y-4">
@@ -205,7 +230,7 @@ export const AgentStudio: React.FC<AgentStudioProps> = ({ demoMode, onAddRun }) 
                       Structured Resolution Summary
                     </h4>
                     <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-100 text-sm leading-relaxed">
-                      {currentRun.output}
+                      {redactSensitiveData(currentRun.output)}
                     </div>
                   </div>
 

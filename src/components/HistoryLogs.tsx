@@ -1,6 +1,7 @@
 import React from 'react'
 import { AgentExecution } from '../types'
-import { CheckCircle2, Clock, Sparkles } from 'lucide-react'
+import { CheckCircle2, Clock } from 'lucide-react'
+import { redactSensitiveData } from '../utils/security'
 
 interface HistoryLogsProps {
   runs: AgentExecution[]
@@ -14,7 +15,7 @@ export const HistoryLogs: React.FC<HistoryLogsProps> = ({ runs }) => {
           Agent Execution & Audit Log ({runs.length})
         </h3>
         <span className="text-xs text-slate-400">
-          Showing latest verified tasks
+          Showing latest verified tasks (PII auto-redacted)
         </span>
       </div>
 
@@ -47,11 +48,11 @@ export const HistoryLogs: React.FC<HistoryLogsProps> = ({ runs }) => {
             </div>
 
             <p className="text-xs text-slate-400 mb-3 font-mono bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
-              Prompt: {run.prompt}
+              Prompt: {redactSensitiveData(run.prompt)}
             </p>
 
             <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-800/60 text-xs text-slate-300">
-              <span className="font-semibold text-slate-200">Outcome:</span> {run.output}
+              <span className="font-semibold text-slate-200">Outcome:</span> {redactSensitiveData(run.output)}
             </div>
           </div>
         ))}
