@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://terrapulse.isro.gov.in/schemas/sos_packet.schema.json",
+  "title": "TerraPulse NavIC & LoRa Offline SOS Distress Packet Schema",
+  "description": "JSON Schema for ultra-compact (<128 B) offline distress beacons captured via passive indigenous NavIC (L5 + S-band) and relayed over Sub-GHz LoRa (865–867 MHz India ISM) or BLE mesh hops.",
+  "type": "object",
+  "required": [
+    "sos_id",
+    "device_id",
+    "timestamp",
+    "position",
+    "triage",
+    "mesh"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sos_id": {
+      "type": "string",
+      "pattern": "^SOS-[A-Z0-9_-]{4,16}$",
+      "description": "Unique distress beacon identifier (e.g. SOS-KOTHRI-001)"
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Hardware device or PWA client identifier (e.g. LORA-NODE-KOT-04)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 creation timestamp"
+    },
+    "position": {
+      "type": "object",
+      "required": ["lat", "lng", "accuracy_m", "navic_band"],
+      "additionalProperties": false,
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90.0,
+          "maximum": 90.0,
+          "description": "Latitude coordinate obtained from passive NavIC satellite fix"
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "description": "Longitude coordinate obtained from passive NavIC satellite fix"
+        },
+        "accuracy_m": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated circular positioning accuracy in meters (sub-meter with dual L5+S)"
+        },
+        "navic_band": {
+          "type": "string",
+          "enum": ["L5", "S", "L5_S_DUAL", "NA"],
+          "description": "Active IRNSS/NavIC satellite receiver frequency band"
+        },
+        "altitude_m": {
+          "type": "number",
+          "description": "Elevation above MSL in meters"
+        }
+      }
+    },
+    "triage": {
+      "type": "object",
+      "required": ["severity", "headcount", "needs", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["LOW", "MODERATE", "HIGH", "CRITICAL"],
+          "description": "Field triage classification for prioritization"
+        },
+        "headcount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Number of trapped or affected citizens at this node"
+        },
+        "needs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["MEDICAL", "BOAT_RESCUE", "WATER", "FOOD", "EVACUATION"]
+          },
+          "description": "Immediate life-safety requirements"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Brief SMS-style text note (e.g. 'Rooftop marooned near Kothri riverbed')"
+        },
+        "water_level_status": {
+          "type": "string",
+          "enum": ["GROUND_FLOOR", "ROOFTOP_TRAPPED", "ISOLATED_TREE", "WASHED_AWAY_RISK", "SAFE_ELEVATION"]
+        },
+        "battery_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "mesh": {
+      "type": "object",
+      "required": ["transport", "hop_count", "max_hops", "relay_path", "sync_status"],
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["LORA_865", "LORA_867", "BLE_MESH", "DIRECT_NAVIC_SMS"],
+          "description": "Active off-grid radio physical layer"
+        },
+        "hop_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "Current number of mesh hops traversed"
+        },
+        "max_hops": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 15,
+          "description": "TTL maximum hop limit before packet drop"
+        },
+        "relay_path": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered list of relay node IDs that forwarded this beacon"
+        },
+        "sync_status": {
+          "type": "string",
+          "enum": ["QUEUED_OFFLINE", "RELAYED_MESH", "SYNCED_COMMAND"],
+          "description": "Delivery confirmation status"
+        },
+        "rssi_dbm": {
+          "type": "number",
+          "description": "Received Signal Strength Indicator in dBm"
+        },
+        "snr_db": {
+          "type": "number",
+          "description": "Signal-to-Noise Ratio in dB"
+        }
+      }
+    }
+  }
+}

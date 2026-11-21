@@ -1,0 +1,42 @@
+# TerraPulse - Space-to-Ground Geospatial Intelligence & Tactical Mesh Platform
+# ASTRA 2026 Hackathon | Team Zero Latency
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: terrapulse-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - USE_MOCK_DATA=true
+      - MOSDAC_API_URL=https://mosdac.gov.in/api
+      - BHOONIDHI_API_URL=https://bhoonidhi.nrsc.gov.in/api
+      - VEDAS_API_URL=https://vedas.sac.gov.in/api
+      - BHUVAN_API_URL=https://bhuvan.nrsc.gov.in/api
+      - LORA_SIMULATION_ENABLED=true
+    volumes:
+      - ./backend/app:/app/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: terrapulse-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000/ws/telemetry
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://terrapulse.isro.gov.in/schemas/dispatch_vector.schema.json",
+  "title": "TerraPulse Tactical Evacuation Dispatch Vector Schema",
+  "description": "JSON Schema for lightweight evacuation vector pushes (<48 KB) broadcasted from Central Command to field rescue nodes during cellular blackouts via NavIC SMS or LoRa mesh.",
+  "type": "object",
+  "required": [
+    "dispatch_id",
+    "issued_at",
+    "target_zone_id",
+    "mode",
+    "alert_headline",
+    "evacuation_corridor",
+    "safe_asset",
+    "payload_kb"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^DSP-[A-Z0-9_-]{4,16}$",
+      "description": "Unique dispatch vector identifier (e.g. DSP-KOTHRI-VEC-01)"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 issuance timestamp"
+    },
+    "target_zone_id": {
+      "type": "string",
+      "description": "Target geographic sector code (e.g. SECTOR-SEHORE-KOTHRI-04)"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["NORMAL", "CELL_BLACKOUT_MESH_ACTIVE", "BACKHAUL_SYNC"],
+      "description": "Operational telecommunication mode"
+    },
+    "alert_headline": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 160,
+      "description": "Concise emergency warning broadcasted to field radios"
+    },
+    "evacuation_corridor": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["LineString"]
+        },
+        "coordinates": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3,
+            "items": { "type": "number" },
+            "description": "[longitude, latitude, (optional altitude)]"
+          }
+        }
+      }
+    },
+    "safe_asset": {
+      "type": "object",
+      "required": ["name", "lat", "lng"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of safe destination shelter or hospital (e.g. VIT Bhopal Auditorium Shelter)"
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90.0,
+          "maximum": 90.0
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0
+        },
+        "asset_type": {
+          "type": "string",
+          "enum": ["SHELTER", "HOSPITAL", "GRAM_PANCHAYAT", "SCHOOL"]
+        },
+        "capacity": {
+          "type": "integer"
+        },
+        "current_occupancy": {
+          "type": "integer"
+        }
+      }
+    },
+    "submerged_checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "lat", "lng", "water_depth_m", "impassable"],
+        "properties": {
+          "name": { "type": "string" },
+          "lat": { "type": "number" },
+          "lng": { "type": "number" },
+          "water_depth_m": { "type": "number" },
+          "impassable": { "type": "boolean" }
+        }
+      }
+    },
+    "payload_kb": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 48.0,
+      "description": "Compressed vector size in kilobytes, strictly constrained to <= 48 KB for LoRa radio broadcast"
+    }
+  }
+}

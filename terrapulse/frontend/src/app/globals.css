@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #070b14;
+  --bg-secondary: #0b1120;
+  --bg-tertiary: #10172b;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(56, 189, 248, 0.35);
+  --foreground: #e2e8f0;
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--bg-primary);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+}
+
+/* Operational C2 Console Paneling (No generic neon glow) */
+.c2-panel {
+  background: rgba(11, 17, 32, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.c2-panel-inset {
+  background: rgba(7, 11, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.c2-panel-interactive {
+  background: rgba(11, 17, 32, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.15s ease-in-out;
+}
+
+.c2-panel-interactive:hover {
+  background: rgba(16, 23, 43, 0.95);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+/* Dense Data Table & Row Utilities */
+.data-table th {
+  padding: 6px 10px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.data-table td {
+  padding: 6px 10px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.data-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Tabular Numbers for telemetry */
+.tabular-data {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* High-contrast Field Device Styling for /field */
+.field-lcd {
+  background: #03060d;
+  border: 1px solid #1e293b;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* Purposeful 60fps Micro-Animations */
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.anim-flow-corridor {
+  stroke-dasharray: 8 4;
+  animation: flowDash 1.2s linear infinite;
+}
+
+@keyframes streamHops {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+.anim-mesh-stream {
+  stroke-dasharray: 4 4;
+  animation: streamHops 1.0s linear infinite;
+}
+
+@keyframes beaconRing {
+  0% {
+    r: 8;
+    opacity: 0.9;
+  }
+  100% {
+    r: 22;
+    opacity: 0;
+  }
+}
+
+.anim-beacon-ring {
+  animation: beaconRing 2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes pulseSubtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.anim-pulse-subtle {
+  animation: pulseSubtle 2.5s ease-in-out infinite;
+}
+
+/* Smooth Fade In */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  .anim-flow-corridor,
+  .anim-mesh-stream,
+  .anim-beacon-ring,
+  .anim-pulse-subtle {
+    animation: none !important;
+  }
+}
+
+/* Custom Minimalist Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #070b14;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}

@@ -1,0 +1,230 @@
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, ConfigDict
+
+
+# ==============================================================================
+# Operational & Tactical Enums
+# ==============================================================================
+
+class OperationalMode(str, Enum):
+    """Network operational mode governing backhaul and tactical mesh dispatch."""
+    NORMAL = "NORMAL"
+    CELL_BLACKOUT_MESH_ACTIVE = "CELL_BLACKOUT_MESH_ACTIVE"
+    BACKHAUL_SYNC = "BACKHAUL_SYNC"
+
+
+class ScenarioMode(str, Enum):
+    """GeoAI scenario escalation stage in GeoJSON metadata."""
+    BASELINE = "BASELINE"
+    MOSDAC_RAIN_ALERT = "MOSDAC_RAIN_ALERT"
+    BHOONIDHI_SAR_INUNDATION = "BHOONIDHI_SAR_INUNDATION"
+    VEDAS_DEM_CORRIDORS = "VEDAS_DEM_CORRIDORS"
+    TELECOM_BLACKOUT_MESH = "TELECOM_BLACKOUT_MESH"
+
+
+class SpatialLayer(str, Enum):
+    """The 5 authoritative GeoAI intelligence layers."""
+    MOSDAC_RAIN = "mosdac_rain"
+    BHOONIDHI_FLOOD = "bhoonidhi_flood"
+    VEDAS_ROADS = "vedas_roads"
+    VEDAS_CORRIDORS = "vedas_corridors"
+    BHUVAN_ASSETS = "bhuvan_assets"
+
+
+class HazardSeverity(str, Enum):
+    """Standardized 4-tier hazard and triage severity."""
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class RoadStatus(str, Enum):
+    """VEDAS hydrological road accessibility classification."""
+    OPEN = "OPEN"
+    SUBMERGED = "SUBMERGED"
+    CORRIDOR = "CORRIDOR"
+    NA = "NA"
+
+
+class AssetType(str, Enum):
+    """Bhuvan cadastral infrastructure taxonomy."""
+    HOSPITAL = "HOSPITAL"
+    SCHOOL = "SCHOOL"
+    GRAM_PANCHAYAT = "GRAM_PANCHAYAT"
+    SHELTER = "SHELTER"
+    RESERVOIR = "RESERVOIR"
+    NONE = "NONE"
+
+
+class NavicBand(str, Enum):
+    """Indigenous Indian Satellite Navigation constellation frequency bands."""
+    L5 = "L5"
+    S_BAND = "S_BAND"
+    L5_S_DUAL = "L5_S_DUAL"
+    ESTIMATED_MESH = "ESTIMATED_MESH"
+
+
+class MeshTransport(str, Enum):
+    """Physical radio layer for off-grid tactical relays."""
+    LORA_865 = "LORA_865"
+    LORA_867 = "LORA_867"
+    BLE_MESH = "BLE_MESH"
+    DIRECT_NAVIC_SMS = "DIRECT_NAVIC_SMS"
+
+
+class MeshSyncStatus(str, Enum):
+    """Lifecycle status of off-grid distress beacon propagation."""
+    QUEUED_OFFLINE = "QUEUED_OFFLINE"
+    RELAYED_MESH = "RELAYED_MESH"
+    SYNCED_COMMAND = "SYNCED_COMMAND"
+
+
+# ==============================================================================
+# GeoJSON Feature Collection Models (geojson_feature.schema.json)
+# ==============================================================================
+
+class GeoJsonMetadata(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    source_portal: str = "TerraPulse_GeoAI"
+    generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    payload_kb: float = 0.0
+    scenario_mode: ScenarioMode = ScenarioMode.BASELINE
+    rainfall_threshold_mm_hr: float = 15.0
+    basin_name: Optional[str] = "Kothri Kalan / Sehore / Bhopal Basin (Madhya Pradesh)"
+    bounding_box: Optional[List[float]] = [77.01, 23.07, 77.43, 23.27]
+
+
+class GeoJsonGeometry(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str  # Polygon, MultiPolygon, LineString, Point
+    coordinates: Any
+
+
+class GeoJsonFeatureProperties(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    layer: SpatialLayer
+    title: str
+    hazard_type: str = "NONE"
+    severity: HazardSeverity = HazardSeverity.LOW
+    rainfall_mm_hr: float = 0.0
+    water_depth_m: float = 0.0
+    road_status: RoadStatus = RoadStatus.NA
+    asset_type: AssetType = AssetType.NONE
+    evacuation_priority: int = Field(ge=1, le=5, default=1)
+    recommended_action: str
+    elevation_m: Optional[float] = None
+    capacity: Optional[int] = None
+    sensor: Optional[str] = None
+
+
+class GeoJsonFeature(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str = "Feature"
+    id: Optional[str] = None
+    geometry: GeoJsonGeometry
+    properties: GeoJsonFeatureProperties
+
+
+class GeoJsonFeatureCollection(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str = "FeatureCollection"
+    metadata: GeoJsonMetadata
+    features: List[GeoJsonFeature] = Field(default_factory=list)
+
+
+# ==============================================================================
+# SOS Distress Packet Models (sos_packet.schema.json)
+# ==============================================================================
+
+class PositionModel(BaseModel):
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    accuracy_m: float = 5.0
+    navic_band: NavicBand = NavicBand.L5
+
+
+class TriageModel(BaseModel):
+    severity: HazardSeverity = HazardSeverity.MODERATE
+    headcount: int = Field(ge=1, default=1)
+    needs: List[str] = Field(default_factory=list)
+    note: Optional[str] = None
+
+
+class MeshModel(BaseModel):
+    transport: MeshTransport = MeshTransport.LORA_865
+    hop_count: int = Field(ge=0, le=15, default=0)
+    max_hops: int = Field(ge=1, le=15, default=7)
+    relay_path: List[str] = Field(default_factory=list)
+    sync_status: MeshSyncStatus = MeshSyncStatus.QUEUED_OFFLINE
+
+
+class SOSPacket(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    sos_id: str = Field(pattern=r"^SOS-[A-Z0-9_-]{4,20}$")
+    device_id: str
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    position: PositionModel
+    triage: TriageModel
+    mesh: MeshModel
+
+
+# ==============================================================================
+# Dispatch Vector Models (dispatch_vector.schema.json)
+# ==============================================================================
+
+class SafeAsset(BaseModel):
+    name: str
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    asset_id: Optional[str] = None
+
+
+class DispatchVector(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    dispatch_id: str = Field(pattern=r"^DSP-[A-Z0-9_-]{4,16}$")
+    issued_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    mode: OperationalMode = OperationalMode.NORMAL
+    target_zone_id: str
+    alert_headline: str
+    evacuation_corridor: GeoJsonGeometry
+    safe_asset: SafeAsset
+    payload_kb: float = Field(le=48.0, default=1.0)
+
+
+# ==============================================================================
+# Unified Central Command State Response & KPIs
+# ==============================================================================
+
+class StateSummaryKPIs(BaseModel):
+    total_features: int = 0
+    active_sos_count: int = 0
+    critical_sos_count: int = 0
+    submerged_roads_count: int = 0
+    open_corridors_count: int = 0
+    safe_shelters_count: int = 0
+    payload_kb: float = 0.0
+    cellular_online: bool = True
+    navic_locked: bool = True
+    lora_mesh_active: bool = False
+    max_rainfall_mm_hr: float = 0.0
+    max_water_depth_m: float = 0.0
+
+
+class TerraPulseStateResponse(BaseModel):
+    mode: OperationalMode
+    features: GeoJsonFeatureCollection
+    payload_kb: float
+    sos_packets: List[SOSPacket] = Field(default_factory=list)
+    dispatches: List[DispatchVector] = Field(default_factory=list)
+    kpis: StateSummaryKPIs
+    last_updated: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

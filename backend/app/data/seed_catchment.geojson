@@ -1,0 +1,264 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "source_portal": "TerraPulse_GeoAI",
+    "generated_at": "2026-11-21T18:00:00Z",
+    "payload_kb": 14.2,
+    "scenario_mode": "BASELINE",
+    "rainfall_threshold_mm_hr": 15.0,
+    "basin_name": "Kothri Kalan / Sehore / Bhopal Basin (Madhya Pradesh)",
+    "bounding_box": [77.01, 23.07, 77.43, 23.27]
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "MOSDAC-RAIN-KOTHRI-01",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [77.0100, 23.0700],
+            [77.2000, 23.0700],
+            [77.2000, 23.2200],
+            [77.0100, 23.2200],
+            [77.0100, 23.0700]
+          ]
+        ]
+      },
+      "properties": {
+        "layer": "mosdac_rain",
+        "title": "MOSDAC INSAT-3DS Hourly Precipitation Grid - Kothri/Sehore Sector",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "NONE",
+        "evacuation_priority": 1,
+        "recommended_action": "Routine hydro-meteorological nowcasting; rainfall below 15.0 mm/hr threshold.",
+        "sensor": "INSAT-3DS TIR1 / GSMaP_ISRO (0.1 deg)"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHOONIDHI-SAR-SEVAN-01",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [77.0300, 23.0800],
+            [77.0650, 23.0950],
+            [77.0900, 23.1200],
+            [77.0750, 23.1350],
+            [77.0400, 23.1100],
+            [77.0200, 23.0900],
+            [77.0300, 23.0800]
+          ]
+        ]
+      },
+      "properties": {
+        "layer": "bhoonidhi_flood",
+        "title": "Bhoonidhi EOS-04 SAR Flood Extent - Sevan River Catchment",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.2,
+        "road_status": "NA",
+        "asset_type": "RESERVOIR",
+        "evacuation_priority": 1,
+        "recommended_action": "Normal riverbed channel flow; radar backscatter values nominal (>-12 dB).",
+        "sensor": "EOS-04 C-band SAR (Level-2B ARD)"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "VEDAS-ROAD-SH18-01",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.0120, 23.0780],
+          [77.0450, 23.0850],
+          [77.0850, 23.1200],
+          [77.1400, 23.1700],
+          [77.2200, 23.2100],
+          [77.3500, 23.2450]
+        ]
+      },
+      "properties": {
+        "layer": "vedas_roads",
+        "title": "Bhopal-Indore Highway (SH-18/NH-46) Kothri-Sehore Corridor",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "OPEN",
+        "asset_type": "NONE",
+        "evacuation_priority": 1,
+        "recommended_action": "High-capacity dual-carriageway open; no waterlogging observed.",
+        "elevation_m": 492.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "VEDAS-ROAD-CAUSEWAY-02",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.0420, 23.0820],
+          [77.0580, 23.0910],
+          [77.0720, 23.1020]
+        ]
+      },
+      "properties": {
+        "layer": "vedas_roads",
+        "title": "Kothri-Sevan River Causeway Link Road",
+        "hazard_type": "SUBMERGED_CROSSING",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.1,
+        "road_status": "OPEN",
+        "asset_type": "NONE",
+        "evacuation_priority": 2,
+        "recommended_action": "Passable; automated telemetry alert primed if catchment rainfall exceeds 15.0 mm/hr.",
+        "elevation_m": 458.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "VEDAS-CORRIDOR-RIDGE-01",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.0160, 23.0805],
+          [77.0350, 23.1100],
+          [77.0600, 23.1450],
+          [77.0950, 23.1850],
+          [77.1250, 23.2100]
+        ]
+      },
+      "properties": {
+        "layer": "vedas_corridors",
+        "title": "VEDAS High-Elevation Ridge Evacuation Corridor (Kothri-Sehore Crest)",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "CORRIDOR",
+        "asset_type": "NONE",
+        "evacuation_priority": 1,
+        "recommended_action": "Designated all-weather dry evacuation corridor across Cartosat DEM ridge (>510m elevation).",
+        "elevation_m": 514.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHUVAN-ASSET-HOSP-01",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.0250, 23.0825]
+      },
+      "properties": {
+        "layer": "bhuvan_assets",
+        "title": "Community Health Centre (CHC) Kothri Kalan",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "HOSPITAL",
+        "evacuation_priority": 1,
+        "recommended_action": "Primary regional emergency trauma and medical triage facility (Capacity: 60 beds).",
+        "capacity": 60,
+        "elevation_m": 486.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHUVAN-ASSET-SHELTER-02",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.0160, 23.0805]
+      },
+      "properties": {
+        "layer": "bhuvan_assets",
+        "title": "VIT Bhopal Auditorium & Relief Shelter (Kothri Kalan)",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "SHELTER",
+        "evacuation_priority": 1,
+        "recommended_action": "Designated high-ground multi-purpose cyclone/flood shelter with auxiliary solar & captive DG backup (Capacity: 2,500).",
+        "capacity": 2500,
+        "elevation_m": 512.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHUVAN-ASSET-GP-03",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.0210, 23.0850]
+      },
+      "properties": {
+        "layer": "bhuvan_assets",
+        "title": "Kothri Kalan Gram Panchayat Administrative Office",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "GRAM_PANCHAYAT",
+        "evacuation_priority": 1,
+        "recommended_action": "Local disaster volunteer staging center and LoRa mesh ground relay station.",
+        "capacity": 120,
+        "elevation_m": 488.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHUVAN-ASSET-SCH-04",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.0850, 23.1950]
+      },
+      "properties": {
+        "layer": "bhuvan_assets",
+        "title": "Government Higher Secondary School, Sehore West",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "SCHOOL",
+        "evacuation_priority": 1,
+        "recommended_action": "Secondary emergency relief center and civilian muster point.",
+        "capacity": 650,
+        "elevation_m": 498.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "BHUVAN-ASSET-RES-05",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.3450, 23.1250]
+      },
+      "properties": {
+        "layer": "bhuvan_assets",
+        "title": "Kolar Reservoir Hydrological Regulator Station",
+        "hazard_type": "NONE",
+        "severity": "LOW",
+        "rainfall_mm_hr": 4.8,
+        "water_depth_m": 0.0,
+        "road_status": "NA",
+        "asset_type": "RESERVOIR",
+        "evacuation_priority": 1,
+        "recommended_action": "Reservoir live storage at 52% capacity; automated sluice telemetry operating nominal.",
+        "capacity": 185000000,
+        "elevation_m": 462.0
+      }
+    }
+  ]
+}

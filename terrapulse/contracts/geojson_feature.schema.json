@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://terrapulse.isro.gov.in/schemas/geojson_feature.schema.json",
+  "title": "TerraPulse GeoJSON FeatureCollection Schema",
+  "description": "JSON Schema for multi-portal GeoAI FeatureCollection responses (<100 KB target payload) fusing MOSDAC, Bhoonidhi, VEDAS, and Bhuvan data.",
+  "type": "object",
+  "required": ["type", "metadata", "features"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["FeatureCollection"]
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "source_portal",
+        "generated_at",
+        "payload_kb",
+        "scenario_mode",
+        "rainfall_threshold_mm_hr"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "source_portal": {
+          "type": "string",
+          "description": "Originating ISRO portal or fused GeoAI engine node",
+          "enum": ["MOSDAC", "Bhoonidhi", "VEDAS", "Bhuvan", "TerraPulse_GeoAI"]
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 generation timestamp"
+        },
+        "payload_kb": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Total compressed payload size in kilobytes, constrained to <100 KB for disaster bandwidth"
+        },
+        "scenario_mode": {
+          "type": "string",
+          "description": "Operational scenario stage",
+          "enum": [
+            "BASELINE",
+            "MOSDAC_RAIN_ALERT",
+            "BHOONIDHI_SAR_INUNDATION",
+            "VEDAS_DEM_CORRIDORS",
+            "TELECOM_BLACKOUT_MESH"
+          ]
+        },
+        "rainfall_threshold_mm_hr": {
+          "type": "number",
+          "default": 15.0,
+          "description": "Automated SAR acquisition trigger threshold (default 15.0 mm/hr)"
+        },
+        "basin_name": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "[minLng, minLat, maxLng, maxLat]"
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "geometry", "properties"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["Feature"]
+          },
+          "id": {
+            "type": ["string", "number"]
+          },
+          "geometry": {
+            "type": "object",
+            "required": ["type", "coordinates"],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Polygon", "MultiPolygon", "LineString", "Point"]
+              },
+              "coordinates": {
+                "type": "array"
+              }
+            }
+          },
+          "properties": {
+            "type": "object",
+            "required": [
+              "layer",
+              "title",
+              "hazard_type",
+              "severity",
+              "rainfall_mm_hr",
+              "water_depth_m",
+              "road_status",
+              "asset_type",
+              "evacuation_priority",
+              "recommended_action"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "layer": {
+                "type": "string",
+                "enum": [
+                  "mosdac_rain",
+                  "bhoonidhi_flood",
+                  "vedas_roads",
+                  "vedas_corridors",
+                  "bhuvan_assets"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "hazard_type": {
+                "type": "string",
+                "description": "Descriptive classification: FLASH_FLOOD, WATER_LOGGING, SUBMERGED_CROSSING, RUNOFF_RISK, NONE"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["LOW", "MODERATE", "HIGH", "CRITICAL"]
+              },
+              "rainfall_mm_hr": {
+                "type": "number",
+                "minimum": 0
+              },
+              "water_depth_m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "road_status": {
+                "type": "string",
+                "enum": ["OPEN", "SUBMERGED", "CORRIDOR", "NA"]
+              },
+              "asset_type": {
+                "type": "string",
+                "enum": [
+                  "HOSPITAL",
+                  "SCHOOL",
+                  "GRAM_PANCHAYAT",
+                  "SHELTER",
+                  "RESERVOIR",
+                  "NONE"
+                ]
+              },
+              "evacuation_priority": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "recommended_action": {
+                "type": "string",
+                "minLength": 1
+              },
+              "elevation_m": {
+                "type": ["number", "null"]
+              },
+              "capacity": {
+                "type": ["integer", "null"]
+              },
+              "sensor": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
