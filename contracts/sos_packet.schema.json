@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://terrapulse.isro.gov.in/schemas/sos_packet.schema.json",
+  "$id": "urn:terrapulse:sos-packet",
   "title": "TerraPulse NavIC & LoRa Offline SOS Distress Packet Schema",
-  "description": "JSON Schema for ultra-compact (<128 B) offline distress beacons captured via passive indigenous NavIC (L5 + S-band) and relayed over Sub-GHz LoRa (865–867 MHz India ISM) or BLE mesh hops.",
+  "description": "Field help request containing a device or exercise position, the needs reported and the simulated relay status.",
   "type": "object",
   "required": [
     "sos_id",
@@ -16,17 +16,19 @@
   "properties": {
     "sos_id": {
       "type": "string",
-      "pattern": "^SOS-[A-Z0-9_-]{4,16}$",
+      "pattern": "^SOS-[A-Z0-9_-]{4,20}$",
       "description": "Unique distress beacon identifier (e.g. SOS-KOTHRI-001)"
     },
     "device_id": {
       "type": "string",
-      "minLength": 3,
+      "minLength": 1,
+      "maxLength": 64,
       "description": "Hardware device or PWA client identifier (e.g. LORA-NODE-KOT-04)"
     },
     "timestamp": {
       "type": "string",
       "format": "date-time",
+      "maxLength": 40,
       "description": "ISO-8601 creation timestamp"
     },
     "position": {
@@ -48,13 +50,14 @@
         },
         "accuracy_m": {
           "type": "number",
-          "minimum": 0,
-          "description": "Estimated circular positioning accuracy in meters (sub-meter with dual L5+S)"
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Position accuracy in metres"
         },
         "navic_band": {
           "type": "string",
-          "enum": ["L5", "S", "L5_S_DUAL", "NA"],
-          "description": "Active IRNSS/NavIC satellite receiver frequency band"
+          "enum": ["L5", "S_BAND", "L5_S_DUAL", "ESTIMATED_MESH", "L5+S_PASSIVE", "DEVICE_GPS"],
+          "description": "Reported location source"
         },
         "altitude_m": {
           "type": "number",
@@ -64,7 +67,7 @@
     },
     "triage": {
       "type": "object",
-      "required": ["severity", "headcount", "needs", "note"],
+      "required": ["severity", "headcount", "needs"],
       "additionalProperties": false,
       "properties": {
         "severity": {
@@ -75,21 +78,22 @@
         "headcount": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500,
+          "maximum": 10000,
           "description": "Number of trapped or affected citizens at this node"
         },
         "needs": {
           "type": "array",
-          "uniqueItems": true,
+          "maxItems": 10,
           "items": {
             "type": "string",
-            "enum": ["MEDICAL", "BOAT_RESCUE", "WATER", "FOOD", "EVACUATION"]
+            "minLength": 1,
+            "maxLength": 32
           },
           "description": "Immediate life-safety requirements"
         },
         "note": {
           "type": "string",
-          "maxLength": 160,
+          "maxLength": 240,
           "description": "Brief SMS-style text note (e.g. 'Rooftop marooned near Kothri riverbed')"
         },
         "water_level_status": {
@@ -128,7 +132,8 @@
         },
         "relay_path": {
           "type": "array",
-          "items": { "type": "string" },
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 40 },
           "description": "Ordered list of relay node IDs that forwarded this beacon"
         },
         "sync_status": {

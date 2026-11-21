@@ -1,430 +1,354 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  Radio,
-  ShieldCheck,
-  Building2,
-  Route,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  ArrowLeft,
-  HardDrive,
-  Map as MapIcon,
-  ChevronDown,
-  ChevronUp,
-  RefreshCw,
-  CheckCircle2,
-  ChevronRight,
-  Compass,
-  Send,
+  Check, ChevronDown, CloudOff, Crosshair, Droplets, HeartPulse, Home, MapPin,
+  Radio, Route, Satellite, ShieldCheck, Soup, TriangleAlert, Users, Wifi,
 } from "lucide-react";
-import NavicPanel from "@/components/NavicPanel";
-import LoraMeshPanel from "@/components/LoraMeshPanel";
-import CommandMap from "@/components/CommandMap";
+import Brand from "@/components/Brand";
+import CommandMap, { type MapTarget } from "@/components/CommandMap";
+import { formatNumber, friendlyNeed, timeOf } from "@/lib/briefing";
+import { DEFAULT_LAYERS, LABELS } from "@/lib/layers";
+import { getNavicFix, getQueuedOfflineSOS, saveNavicFix, type NavicFixData } from "@/lib/offlineStore";
+import { distanceKm, getRegion, INDIA, INDIA_REGIONS, inBounds, nearestRegion, type Place, type Point } from "@/lib/regions";
 import {
-  NavicFixData,
-  getCachedFeatures,
-  saveCachedFeatures,
-  getCachedDispatches,
-  saveCachedDispatches,
-  getQueuedOfflineSOS,
-  updateQueuedOfflineSOS,
-} from "@/lib/offlineStore";
-import {
-  GeoJsonFeatureCollection,
-  DispatchVector,
-  SOSPacket,
-  fetchState,
-  switchOperationalMode,
-  OperationalMode,
-  submitSOSPacket,
+  compileLocalState, featurePoint, fetchState, routePair, submitSOSPacket, subscribeToTelemetry,
+  syncQueuedSOS, type HazardSeverity, type SOSPacket,
 } from "@/lib/terrapulseClient";
 
-export default function FieldResponderPage() {
-  const [navicFix, setNavicFix] = useState<NavicFixData | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const [cachedFeatures, setCachedFeatures] = useState<GeoJsonFeatureCollection | null>(null);
-  const [cachedDispatches, setCachedDispatches] = useState<DispatchVector[]>([]);
-  const [sosPackets, setSosPackets] = useState<SOSPacket[]>([]);
-  const [isOfflineCached, setIsOfflineCached] = useState(false);
-  const [showMap, setShowMap] = useState(true);
-  const [selectedFeature, setSelectedFeature] = useState<any>(null);
-  const [mode, setMode] = useState<OperationalMode>("CELL_BLACKOUT_MESH_ACTIVE");
-  const [syncingAll, setSyncingAll] = useState(false);
-  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+const NEEDS = [
+  { value: "MEDICAL", label: "Medical", icon: HeartPulse },
+  { value: "BOAT_RESCUE", label: "Boat rescue", icon: Route },
+  { value: "WATER", label: "Water", icon: Droplets },
+  { value: "FOOD", label: "Food", icon: Soup },
+  { value: "SAFE_SHELTER", label: "Safe shelter", icon: ShieldCheck },
+] as const;
+const URGENCY = [
+  { value: "CRITICAL", label: "Critical", description: "Immediate danger" },
+  { value: "HIGH", label: "High", description: "Help needed soon" },
+  { value: "MODERATE", label: "Moderate", description: "Safe for now" },
+] as const;
+const PLACES = INDIA_REGIONS.flatMap((region) => region.places.map((place) => ({ ...place, region })));
+const FIELD_LAYERS = { ...DEFAULT_LAYERS, mosdac_rain: false, sos_mesh: false };
 
-  const [activeLayers, setActiveLayers] = useState({
-    mosdac_rain: true,
-    bhoonidhi_flood: true,
-    vedas_roads: true,
-    vedas_corridors: true,
-    bhuvan_assets: true,
-    sos_mesh: true,
-  });
+function presetFix(place: Place): NavicFixData {
+  return { lat: place.center[1], lng: place.center[0], accuracy_m: 4.5, navic_band: "L5+S_PASSIVE",
+    locked_at: new Date().toISOString(), is_simulated: true };
+}
 
-  const toggleLayer = (key: string) => {
-    setActiveLayers((prev: any) => ({ ...prev, [key]: !prev[key] }));
-  };
+function shortId(): string {
+  return [...crypto.getRandomValues(new Uint8Array(8))].map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
 
-  const showFeedback = (msg: string) => {
-    setFeedbackMsg(msg);
-    setTimeout(() => setFeedbackMsg(null), 3500);
-  };
+type Delivery = { kind: "queued" | "received"; message: string; time: string } | { kind: "error"; message: string };
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((reg) => console.log("🛰️ [TerraPulse PWA] Service Worker active:", reg.scope))
-        .catch((err) => console.warn("PWA SW registration failed:", err));
-    }
+export default function FieldResponder() {
+  const [state, setState] = useState(compileLocalState);
+  const [preset, setPreset] = useState(PLACES[0].name);
+  const [fix, setFix] = useState<NavicFixData>();
+  const [locating, setLocating] = useState(false);
+  const [locationMessage, setLocationMessage] = useState("");
+  const [offline, setOffline] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [urgency, setUrgency] = useState<HazardSeverity>("HIGH");
+  const [people, setPeople] = useState("1");
+  const [needs, setNeeds] = useState<string[]>([]);
+  const [note, setNote] = useState("");
+  const [queued, setQueued] = useState<SOSPacket[]>([]);
+  const [delivery, setDelivery] = useState<Delivery>();
+  const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const sendLock = useRef(false);
+  const syncLock = useRef(false);
 
-    const updateOnline = () => setIsOnline(navigator.onLine);
-    window.addEventListener("online", updateOnline);
-    window.addEventListener("offline", updateOnline);
-    setIsOnline(navigator.onLine);
+  const blackout = state.mode === "CELL_BLACKOUT_MESH_ACTIVE";
+  const linked = state.connection === "api" && !offline && !blackout;
 
-    getCachedFeatures().then((feat) => {
-      if (feat) {
-        setCachedFeatures(feat);
-        setIsOfflineCached(true);
-      }
-    });
-
-    getCachedDispatches().then((disp) => {
-      if (disp && disp.length > 0) setCachedDispatches(disp);
-    });
-
-    getQueuedOfflineSOS().then((sos) => {
-      if (sos && sos.length > 0) setSosPackets(sos);
-    });
-
-    fetchState()
-      .then((live) => {
-        setCachedFeatures(live.features);
-        saveCachedFeatures(live.features);
-        setCachedDispatches(live.dispatches);
-        saveCachedDispatches(live.dispatches);
-        if (live.sos_packets && live.sos_packets.length > 0) {
-          setSosPackets(live.sos_packets);
+  const refresh = useCallback(async () => {
+    if (syncLock.current) return;
+    syncLock.current = true;
+    try {
+      setOffline(!navigator.onLine);
+      const snapshot = await fetchState();
+      setState(snapshot);
+      const pending = await getQueuedOfflineSOS();
+      setQueued(pending);
+      if (pending.length && snapshot.connection === "api" && snapshot.mode !== "CELL_BLACKOUT_MESH_ACTIVE" && navigator.onLine) {
+        setSyncing(true);
+        const delivered = await syncQueuedSOS();
+        setQueued(await getQueuedOfflineSOS());
+        if (delivered.length) {
+          setDelivery({ kind: "received", message: `${delivered.length} queued ${delivered.length === 1 ? "request synced" : "requests synced"} to TerraPulse.`,
+            time: new Date().toISOString() });
         }
-        setMode(live.mode);
-        setIsOfflineCached(true);
-      })
-      .catch((err) => {
-        console.warn("Operating offline: utilizing cached local vector store:", err);
-      });
-
-    return () => {
-      window.removeEventListener("online", updateOnline);
-      window.removeEventListener("offline", updateOnline);
-    };
+      }
+    } catch {
+      setDelivery({ kind: "error", message: "Sync is delayed. Saved help requests will retry when the connection returns." });
+    } finally {
+      setSyncing(false);
+      syncLock.current = false;
+    }
   }, []);
 
-  const handleToggleMode = async () => {
-    const nextMode = mode === "CELL_BLACKOUT_MESH_ACTIVE" ? "NORMAL" : "CELL_BLACKOUT_MESH_ACTIVE";
-    setMode(nextMode);
-    try {
-      await switchOperationalMode(nextMode);
-      showFeedback(`Operational mode switched to ${nextMode}`);
-    } catch (e) {
-      console.debug("Mode changed locally (offline):", nextMode);
-      showFeedback(`Switched to ${nextMode} (Offline Mode)`);
-    }
-  };
-
-  const handleSyncAllPackets = async () => {
-    setSyncingAll(true);
-    let syncedCount = 0;
-    try {
-      for (const pkt of sosPackets) {
-        if (pkt.mesh.sync_status !== "SYNCED_COMMAND") {
-          try {
-            await submitSOSPacket(pkt);
-            const synced: SOSPacket = {
-              ...pkt,
-              mesh: { ...pkt.mesh, sync_status: "SYNCED_COMMAND" },
-            };
-            await updateQueuedOfflineSOS(synced);
-            setSosPackets((prev) => prev.map((p) => (p.sos_id === pkt.sos_id ? synced : p)));
-            syncedCount++;
-          } catch (err) {
-            console.warn("Sync failed for packet:", pkt.sos_id);
-          }
-        }
+  useEffect(() => {
+    let active = true;
+    const requested = getRegion(new URLSearchParams(window.location.search).get("region"));
+    const location = requested.places[0] && requested.id !== INDIA.id ? requested.places[0] : PLACES[0];
+    setPreset(location.name);
+    setFix(presetFix(location));
+    if (requested.id === INDIA.id) void getNavicFix().then((cached) => {
+      if (active && cached && inBounds([cached.lng, cached.lat], INDIA.bbox)) {
+        setFix(cached);
+        setPreset(PLACES.find((p) => p.center[0] === cached.lng && p.center[1] === cached.lat)?.name ?? "");
       }
-      showFeedback(
-        syncedCount > 0
-          ? `Successfully synced ${syncedCount} packet(s) to Central Base.`
-          : "All emergency packets are already synced."
-      );
-    } finally {
-      setSyncingAll(false);
+    });
+
+    void refresh();
+    const unsubscribe = subscribeToTelemetry((event) => {
+      if (event.event === "offline") setOffline(true);
+      else void refresh();
+    });
+
+    const serviceWorker = "serviceWorker" in navigator ? navigator.serviceWorker : undefined;
+    const prepared = (event: MessageEvent) => {
+      if (event.data?.type === "OFFLINE_READY") setReady(true);
+      if (event.data?.type === "SOS_SYNCED" && event.data.count > 0) {
+        const count = Number(event.data.count);
+        setDelivery({ kind: "received", message: `${count} queued ${count === 1 ? "request synced" : "requests synced"} to TerraPulse.`,
+          time: new Date().toISOString() });
+        void getQueuedOfflineSOS().then(setQueued);
+      }
+    };
+    serviceWorker?.addEventListener("message", prepared);
+    if (serviceWorker?.controller) setReady(true);
+    void serviceWorker?.ready.then(() => { if (active) setReady(true); });
+    return () => { active = false; unsubscribe(); serviceWorker?.removeEventListener("message", prepared); };
+  }, [refresh]);
+
+  const place = PLACES.find((item) => item.name === preset);
+  const point = useMemo<Point>(() => fix ? [fix.lng, fix.lat] : PLACES[0].center, [fix]);
+  const area = place?.region ?? nearestRegion(point);
+  const pair = routePair(state, area.id, undefined, point);
+  const dispatch = state.dispatches.filter((item) => distanceKm([item.safe_asset.lng, item.safe_asset.lat], point) <= 95)
+    .sort((a, b) => Date.parse(b.issued_at) - Date.parse(a.issued_at))[0];
+  const resources = state.features.features.filter((feature) =>
+    feature.geometry.type === "Point" && ["SHELTER", "HOSPITAL", "SCHOOL", "GRAM_PANCHAYAT"].includes(feature.properties.asset_type ?? "")
+    && distanceKm(featurePoint(feature), point) <= 60)
+    .sort((a, b) => distanceKm(featurePoint(a), point) - distanceKm(featurePoint(b), point)).slice(0, 4);
+  const localRoute = pair && distanceKm(featurePoint(pair.route), point) <= 95 ? pair : undefined;
+  const mapTarget = useMemo<MapTarget>(() => ({
+    center: point, zoom: 10, label: place?.name ?? "my location",
+    bbox: [point[0] - .21, point[1] - .17, point[0] + .21, point[1] + .17],
+  }), [point, place?.name]);
+
+  function usePreset(value: string) {
+    const next = PLACES.find((item) => item.name === value);
+    if (!next) return;
+    const current = presetFix(next);
+    setPreset(value);
+    setFix(current);
+    setLocationMessage(`Using the ${next.name} exercise location.`);
+    void saveNavicFix(current);
+  }
+
+  function locate() {
+    if (!navigator.geolocation) {
+      setLocationMessage("Device location is unavailable. Choose an exercise location below.");
+      return;
     }
-  };
+    setLocating(true);
+    setLocationMessage("");
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      setLocating(false);
+      if (!inBounds([coords.longitude, coords.latitude], INDIA.bbox)) {
+        setLocationMessage("The device is outside the India map area. Choose an exercise location below.");
+        return;
+      }
+      const location = {
+        lat: coords.latitude, lng: coords.longitude, accuracy_m: Math.max(1, coords.accuracy),
+        navic_band: "DEVICE_GPS", locked_at: new Date().toISOString(), is_simulated: false,
+      };
+      setPreset("");
+      setFix(location);
+      setLocationMessage("Device location found. Check the accuracy before sending.");
+    }, () => {
+      setLocating(false);
+      setLocationMessage("Couldn’t get a device location. Check location permission or choose an exercise location.");
+    }, { enableHighAccuracy: true, timeout: 9000, maximumAge: 60000 });
+  }
 
-  const bhuvanAssets = cachedFeatures?.features.filter((f) => f.properties.layer === "bhuvan_assets") || [];
-  const safeCorridors = cachedFeatures?.features.filter((f) => f.properties.layer === "vedas_corridors") || [];
-  const submergedRoads = cachedFeatures?.features.filter((f) => f.properties.road_status === "SUBMERGED") || [];
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (sendLock.current || !fix) return;
+    if (!needs.length) {
+      setDelivery({ kind: "error", message: "Choose at least one kind of help before sending." });
+      return;
+    }
+    sendLock.current = true;
+    setSending(true);
+    setDelivery(undefined);
+    try {
+      const id = shortId();
+      const packet: SOSPacket = {
+        sos_id: `SOS-${id}`,
+        device_id: `FIELD-${id.slice(0, 8)}`,
+        timestamp: new Date().toISOString(),
+        position: { lat: fix.lat, lng: fix.lng, accuracy_m: Math.min(100000, fix.accuracy_m), navic_band: fix.navic_band },
+        triage: { severity: urgency, headcount: Number(people), needs, note: note.trim() || undefined },
+        mesh: { transport: "LORA_865", hop_count: 0, max_hops: 7, relay_path: [], sync_status: "QUEUED_OFFLINE" },
+      };
+      const saved = await submitSOSPacket(packet, !navigator.onLine || blackout);
+      const waiting = saved.mesh.sync_status !== "SYNCED_COMMAND";
+      const message = waiting
+        ? "Help request saved on this device. It will sync when TerraPulse reconnects."
+        : "TerraPulse received your exercise help request.";
+      setDelivery({ kind: waiting ? "queued" : "received", message, time: saved.timestamp });
+      setQueued(await getQueuedOfflineSOS());
+      setNote("");
+      setNeeds([]);
+      if (waiting && navigator.onLine && !blackout) void refresh();
+    } catch (error) {
+      setDelivery({ kind: "error", message: error instanceof Error && error.name !== "AbortError"
+        ? error.message : "The request could not be saved. Check browser storage and try again." });
+    } finally {
+      setSending(false);
+      sendLock.current = false;
+    }
+  }
 
-  return (
-    <div className="flex flex-col min-h-screen bg-[#070B14] text-white font-sans">
-      {/* 1. TOP UTILITY HEADER BAR */}
-      <header className="h-16 border-b border-[#131D31] bg-[#0A0F1D]/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 font-sans">
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/"
-            className="flex items-center space-x-1.5 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl bg-[#10192C] border border-[#1E293B] transition text-xs font-semibold"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Command C2</span>
-          </Link>
+  const routeName = dispatch?.safe_asset.name ?? localRoute?.asset.properties.title;
 
-          <div className="hidden sm:flex items-center space-x-1.5 text-xs text-slate-400 font-medium">
-            <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-            <span className="text-white font-bold">TerraPulse</span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-            <span className="text-blue-400 font-semibold">Tactical Field Responder</span>
-          </div>
+  return <div className="tp-field">
+    <a className="tp-skip" href="#field-content">Skip to responder controls</a>
+    <header className="tp-field-header">
+      <a href="/" aria-label="TerraPulse dashboard"><Brand /></a>
+      <div>
+        <span className={`tp-live ${!linked ? "tp-live-offline" : ""}`} role="status"><i />{blackout ? "Offline Mesh" : linked ? "Live" : "Offline"}</span>
+        <a href="/" className="tp-button"><Home size={17} /> Dashboard</a>
+      </div>
+    </header>
+    <main className="tp-field-content" id="field-content">
+      <div className="tp-page-heading">
+        <div className="tp-context"><Radio size={15} /> Rescue exercise<span />{ready ? "Available offline" : "Offline setup pending"}</div>
+        <h1>Field Responder</h1>
+        <p>Find your location, ask for help and check nearby places to take shelter.</p>
+      </div>
+      <div className="tp-field-banner" role="status">
+        {linked ? <Wifi size={18} /> : <CloudOff size={18} />}
+        <div><strong>{linked ? "Connected to TerraPulse" : blackout ? "Mobile outage exercise active" : "Working offline"}</strong>
+          <p>{linked ? "Help requests can sync to the dashboard." : "You can save a help request here. TerraPulse syncs it when the connection returns."}</p>
         </div>
+        <span>{queued.length} queued</span>
+      </div>
 
-        {/* Right Status Controls */}
-        <div className="flex items-center space-x-2.5">
-          {/* Blackout Mode Switcher */}
-          <button
-            onClick={handleToggleMode}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full border text-xs font-semibold transition ${
-              mode === "CELL_BLACKOUT_MESH_ACTIVE"
-                ? "bg-rose-950/70 border-rose-700/80 text-rose-300 animate-pulse"
-                : "bg-emerald-950/60 border-emerald-800/80 text-emerald-400"
-            }`}
-            title="Toggle simulated telecom blackout"
-          >
-            {mode === "CELL_BLACKOUT_MESH_ACTIVE" ? <WifiOff className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
-            <span>{mode === "CELL_BLACKOUT_MESH_ACTIVE" ? "Blackout (LoRa Mesh)" : "Cell Online"}</span>
-          </button>
-
-          {/* Local Cache Indicator */}
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#10192C] text-emerald-400 border border-[#1E293B] text-[11px] font-mono font-bold">
-            <HardDrive className="w-3 h-3 text-emerald-400" />
-            <span>{isOfflineCached ? "Saved Offline" : "Online"}</span>
-          </div>
-        </div>
-      </header>
-
-      {/* FEEDBACK TOAST BANNER */}
-      {feedbackMsg && (
-        <div className="fixed bottom-4 right-4 z-50 px-3.5 py-2.5 bg-[#0F172A] border border-blue-500/60 rounded-xl shadow-2xl text-xs text-white flex items-center space-x-2 animate-fadeIn">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          <span>{feedbackMsg}</span>
-        </div>
-      )}
-
-      {/* 2. 3-STEP RESPONDER FLOW WORKSPACE */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* LEFT COLUMN: Step 1 (NavIC Geolocation) & Step 2 (LoRa SOS Composer) */}
-        <div className="lg:col-span-5 space-y-5">
-          {/* STEP 1: Your Location (Passive NavIC) */}
-          <NavicPanel currentFix={navicFix} onFixLocked={setNavicFix} />
-
-          {/* STEP 2: Send Help Request (LoRa SOS) */}
-          <LoraMeshPanel
-            navicFix={navicFix}
-            onPacketQueued={(pkt) => setSosPackets((prev) => [pkt, ...prev.filter((p) => p.sos_id !== pkt.sos_id)])}
-          />
-        </div>
-
-        {/* RIGHT COLUMN: Step 3 (Safe Route, Evacuation Vectors & Basin Map) */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* STEP 3 CONTAINER CARD */}
-          <div className="bg-[#0D1526] border border-[#1A2640] rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
-            {/* Step 3 Header */}
-            <div className="flex items-center justify-between border-b border-[#1A2640] pb-3">
-              <div className="flex items-center space-x-2.5">
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/40 uppercase tracking-wide">
-                  STEP 3
-                </span>
-                <div className="flex items-center space-x-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <h3 className="font-bold text-sm text-white">SAFE ROUTE & BASE SYNC</h3>
-                </div>
-              </div>
-
-              {/* Sync to Base Action */}
-              <button
-                onClick={handleSyncAllPackets}
-                disabled={syncingAll}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 transition text-xs font-bold disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncingAll ? "animate-spin" : ""}`} />
-                <span>{syncingAll ? "Syncing..." : "Sync Packets to Base"}</span>
-              </button>
+      <div className="tp-field-grid">
+        <div className="tp-field-forms">
+          <section className="tp-card tp-field-card" aria-labelledby="location-heading">
+            <div className="tp-field-title"><span><Satellite size={21} /></span><div>
+              <h2 id="location-heading">My Location</h2><p>Use your device location or choose an exercise preset.</p>
+            </div></div>
+            <div className="tp-location-reading">
+              <div><small>Latitude</small><strong>{fix ? fix.lat.toFixed(5) : "—"}</strong></div>
+              <div><small>Longitude</small><strong>{fix ? fix.lng.toFixed(5) : "—"}</strong></div>
+              <div><small>Accuracy</small><strong>{fix ? `±${formatNumber(fix.accuracy_m, 1)} m` : "—"}</strong></div>
             </div>
+            <div className="tp-field-location-controls">
+              <button type="button" className="tp-button" onClick={locate} disabled={locating}><Crosshair size={17} />
+                {locating ? "Finding location…" : "Use my location"}</button>
+              <label className="tp-region-select"><MapPin size={16} />
+                <select aria-label="Exercise location in India" value={preset} onChange={(event) => usePreset(event.target.value)}>
+                  <option value="" disabled>Choose a location</option>
+                  {INDIA_REGIONS.map((region) => <optgroup label={region.short_name} key={region.id}>
+                    {region.places.map((p) => <option value={p.name} key={p.name}>{p.name}, {p.state}</option>)}
+                  </optgroup>)}
+                </select><ChevronDown size={14} /></label>
+            </div>
+            <p className="tp-field-hint" role="status">{locationMessage || (fix?.is_simulated ? "NavIC exercise position · L5 + S band" : "Device-reported position")}</p>
+          </section>
 
-            <p className="text-xs text-slate-400 leading-snug">
-              Pre-cached Cartosat DEM dry corridors (&gt;510m AMSL), incoming evacuation directives, and nearby high-ground shelters.
-            </p>
-
-            {/* Road Submergence Hazard Directives */}
-            {submergedRoads.length > 0 && (
-              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 text-xs space-y-1">
-                <div className="flex items-center space-x-1.5 text-rose-300 font-bold">
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
-                  <span>HAZARD ALERT: {submergedRoads.length} ROAD(S) CUT OFF</span>
-                </div>
-                {submergedRoads.map((road) => (
-                  <p key={road.id} className="text-slate-300 text-xs pl-5 leading-tight">
-                    <strong className="text-white">{road.properties.title}</strong> is submerged under +{road.properties.water_depth_m}m water. {road.properties.recommended_action}
-                  </p>
+          <section className="tp-card tp-field-card" aria-labelledby="sos-heading">
+            <div className="tp-field-title tp-field-title-sos"><span><Radio size={21} /></span><div>
+              <h2 id="sos-heading">Send SOS Help Request</h2><p>Choose the urgency and the kind of help you need.</p>
+            </div></div>
+            <form className="tp-sos-form" onSubmit={(event) => void send(event)}>
+              <fieldset><legend>Urgency</legend><div className="tp-urgency">
+                {URGENCY.map(({ value, label, description }) => (
+                  <label className={`tp-urgency-${value.toLowerCase()}`} key={value}>
+                    <input type="radio" name="urgency" value={value} checked={urgency === value} onChange={() => setUrgency(value)} />
+                    <span><strong>{label}</strong><small>{description}</small></span>
+                  </label>
                 ))}
-              </div>
-            )}
-
-            {/* Active Command Evacuation Dispatches */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-white flex items-center space-x-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Incoming Command Directives ({cachedDispatches.length})</span>
-                </span>
-                <span className="text-[10px] text-amber-400 font-mono">NavIC Broadcast</span>
-              </div>
-
-              {cachedDispatches.length === 0 ? (
-                <p className="text-xs text-slate-500 italic py-1 text-center">
-                  No active evacuation directives issued. Normal catchment monitoring.
-                </p>
-              ) : (
-                cachedDispatches.map((disp) => (
-                  <div
-                    key={disp.dispatch_id}
-                    className="bg-[#090E1A] p-2.5 rounded-xl border border-[#162136] space-y-1 text-xs"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-amber-400 font-mono text-[11px]">{disp.dispatch_id}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-                        DRY RIDGE DIRECTIVE
-                      </span>
-                    </div>
-                    <p className="text-slate-200 text-xs leading-snug">
-                      {disp.alert_headline}
-                    </p>
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-[#141C2E]">
-                      <span>Safe Target: <strong className="text-white">{disp.safe_asset?.name}</strong></span>
-                      <span className="text-emerald-400 font-mono font-bold">{disp.payload_kb} KB</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Safe Dry Ridge Corridors (VEDAS Cartosat DEM) */}
-            <div className="space-y-2 pt-2 border-t border-[#1A2640]">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-white flex items-center space-x-1.5">
-                  <Route className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Dry Evacuation Corridors</span>
-                </span>
-                <span className="text-[10px] text-emerald-400 font-bold">&gt;510m AMSL (Safe)</span>
-              </div>
-
-              {safeCorridors.map((c) => (
-                <div key={c.id} className="bg-[#090E1A] p-2.5 rounded-xl border border-[#162136] text-xs space-y-0.5">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-emerald-400">{c.properties.title}</span>
-                    <span className="text-[10px] text-white bg-[#162136] px-2 py-0.5 rounded font-mono font-bold">
-                      {c.properties.elevation_m}m AMSL
-                    </span>
-                  </div>
-                  <p className="text-slate-300 text-xs leading-snug">
-                    {c.properties.recommended_action}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Safe Shelters & Hospitals (NRSC Bhuvan Cached) */}
-            <div className="space-y-2 pt-2 border-t border-[#1A2640]">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-white flex items-center space-x-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Nearby Shelters & Relief Centers</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold">Bhuvan Cadastres</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {bhuvanAssets.map((asset) => {
-                  const isShelter = asset.properties.asset_type === "SHELTER";
-                  const isHosp = asset.properties.asset_type === "HOSPITAL";
-                  return (
-                    <div
-                      key={asset.id}
-                      className={`p-2.5 rounded-xl border space-y-1 ${
-                        isShelter
-                          ? "bg-emerald-950/20 border-emerald-800/60"
-                          : isHosp
-                          ? "bg-rose-950/20 border-rose-800/60"
-                          : "bg-[#090E1A] border-[#162136]"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center font-bold text-white text-xs">
-                        <span className="truncate">{asset.properties.title.split("(")[0]}</span>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#162136] text-slate-300">
-                          {asset.properties.asset_type}
-                        </span>
-                      </div>
-                      <p className="text-slate-300 text-[11px] line-clamp-1 leading-snug">
-                        {asset.properties.recommended_action}
-                      </p>
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-[#141C2E]">
-                        <span>Elev: {asset.properties.elevation_m}m</span>
-                        {asset.properties.capacity && (
-                          <span className="text-emerald-400 font-bold">Cap: {asset.properties.capacity}</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Embedded Tactical Basin GIS Map */}
-          <div className="bg-[#0D1526] border border-[#1A2640] rounded-2xl overflow-hidden shadow-xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1A2640] bg-[#090E1A] text-xs">
-              <span className="font-bold text-white flex items-center space-x-2">
-                <MapIcon className="w-4 h-4 text-blue-400" />
-                <span>OFFLINE BASIN VECTOR MAP (KOTHRI-SEHORE)</span>
-              </span>
-              <button
-                onClick={() => setShowMap(!showMap)}
-                className="text-xs text-slate-400 hover:text-white flex items-center space-x-1"
-              >
-                <span>{showMap ? "COLLAPSE" : "EXPAND"}</span>
-                {showMap ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </div></fieldset>
+              <label className="tp-people-input"><span><Users size={17} /> Number of people</span>
+                <input type="number" min={1} max={10000} required inputMode="numeric" value={people} onChange={(event) => setPeople(event.target.value)} />
+              </label>
+              <fieldset><legend>Help needed</legend><div className="tp-needs">
+                {NEEDS.map(({ value, label, icon: Icon }) => <label key={value}>
+                  <input type="checkbox" checked={needs.includes(value)} onChange={() =>
+                    setNeeds((current) => current.includes(value) ? current.filter((need) => need !== value) : [...current, value])} />
+                  <span><Icon size={17} /> {label}</span>
+                </label>)}
+              </div></fieldset>
+              <label className="tp-note-input"><span>Short note <small>Optional</small></span>
+                <textarea maxLength={240} value={note} onChange={(event) => setNote(event.target.value)}
+                  placeholder="For example, two people need help near the school. Use exercise details." rows={3} />
+              </label>
+              <button type="submit" className="tp-button tp-field-send" disabled={sending || !fix}>
+                <Radio size={19} /> {sending ? "Saving request…" : "Send SOS Help Request"}
               </button>
-            </div>
+            </form>
 
-            {showMap && (
-              <div className="h-72 w-full relative">
-                <CommandMap
-                  features={cachedFeatures || undefined}
-                  sosPackets={sosPackets}
-                  dispatches={cachedDispatches}
-                  activeLayers={activeLayers}
-                  onToggleLayer={toggleLayer}
-                  onSelectFeature={setSelectedFeature}
-                  selectedItem={selectedFeature}
-                />
+            {delivery && <div className={`tp-field-delivery tp-field-delivery-${delivery.kind}`} role={delivery.kind === "error" ? "alert" : "status"}>
+              {delivery.kind === "error" ? <TriangleAlert size={17} /> : <Check size={17} />}
+              <p>{delivery.message}</p>
+            </div>}
+            {(delivery?.kind === "queued" || delivery?.kind === "received" || queued.length > 0) && (
+              <div className="tp-relay">
+                <h3>Radio relay exercise</h3>
+                <ol aria-label="Simulated radio hops">
+                  <li><span /><strong>Hop 1</strong><small>Field relay</small></li>
+                  <li><span /><strong>Hop 2</strong><small>Regional relay</small></li>
+                  <li><span /><strong>Rescue Gateway</strong><small>{delivery?.kind === "received" ? "Synced" : "Waiting to sync"}</small></li>
+                </ol>
               </div>
             )}
-          </div>
+            {queued.length > 0 && <div className="tp-queue">
+              <h3>Saved on this device</h3>
+              <ul>{queued.map((packet) => <li key={packet.sos_id}>
+                <strong>{friendlyNeed(packet.triage.severity)} · {packet.triage.headcount} {packet.triage.headcount === 1 ? "person" : "people"}</strong>
+                <span>{timeOf(packet.timestamp)} IST</span>
+              </li>)}</ul>
+              {linked && <button type="button" className="tp-button" disabled={syncing} onClick={() => void refresh()}>{syncing ? "Syncing…" : "Sync now"}</button>}
+            </div>}
+            <p className="tp-field-hint">Radio hops are simulated with LoRa and BLE. Use exercise details in your request.</p>
+          </section>
         </div>
-      </main>
-    </div>
-  );
+
+        <section className="tp-card tp-field-card tp-field-route" aria-labelledby="routes-heading">
+          <div className="tp-field-title"><span><Route size={21} /></span><div>
+            <h2 id="routes-heading">Safe Route &amp; Nearby Shelters</h2>
+            <p>{place?.name ?? "Your location"} · {linked ? "Latest map" : "Offline map"}</p>
+          </div></div>
+          <CommandMap target={mapTarget} features={state.features.features} activeLayers={FIELD_LAYERS}
+            dispatches={dispatch ? [dispatch] : []} offline={offline || blackout} location={point} />
+          <div className="tp-field-route-summary">
+            <span className="tp-list-icon"><ShieldCheck size={19} /></span>
+            <div><h3>{routeName ?? "No route nearby"}</h3>
+              <p>{dispatch ? dispatch.alert_headline : localRoute ? "Follow the marked higher-ground route to this relief point."
+                : "Choose a nearby exercise location to see available routes."}</p>
+              {routeName && <small>Confirm route conditions with local responders.</small>}
+            </div>
+          </div>
+          <h3 className="tp-field-resources-heading">Nearby Relief Points</h3>
+          <ul className="tp-field-resources">
+            {resources.map((feature, i) => <li key={feature.id ?? i}>
+              <MapPin size={17} /><div><strong>{feature.properties.title}</strong><small>{LABELS[feature.properties.asset_type ?? "NONE"]}</small></div>
+              <span>{formatNumber(distanceKm(featurePoint(feature), point), 1)} km</span>
+            </li>)}
+            {!resources.length && <li>No mapped relief points within 60 km.</li>}
+          </ul>
+        </section>
+      </div>
+    </main>
+  </div>;
 }

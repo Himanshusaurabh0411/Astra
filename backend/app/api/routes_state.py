@@ -1,83 +1,69 @@
-import logging
-from typing import Any, Dict
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query
 
-from app.config import settings
+from app.api.ws_live import ws_manager
+from app.config import parse_bbox, settings
+from app.models.regions import Region, canonical_region, get_regions
 from app.models.schemas import TerraPulseStateResponse
 from app.models.state import state_store
 
-logger = logging.getLogger("terrapulse.api.state")
 router = APIRouter(tags=["State & Telemetry"])
 
 
-@router.get(
-    "/health",
-    summary="System Health & Space Portal Connectivity",
-    response_model=Dict[str, Any],
-)
-async def health_check() -> Dict[str, Any]:
-    """
-    Returns operational health status, connected ISRO portal backhaul status,
-    and tactical mesh radio readiness.
-    """
-    features_count = len(state_store.features_collection.features) if state_store.features_collection else 0
+@router.get("/health")
+async def health_check():
+    state = state_store.get_state_response()
     return {
         "status": "HEALTHY",
         "app": settings.APP_NAME,
         "version": settings.VERSION,
         "environment": settings.APP_ENV,
-        "mode": state_store.mode,
-        "portals": {
-            "MOSDAC": "ONLINE (INSAT-3DS TIR1 / GSMaP 0.1 deg)",
-            "Bhoonidhi": "ONLINE (EOS-04 / NISAR Level-2B ARD)",
-            "VEDAS": "ONLINE (Cartosat High-Res DEM Hydrology)",
-            "Bhuvan": "ONLINE (NRSC Cadastral Infrastructure WFS)",
-        },
+        "mode": state.mode,
+        "portals": state.features.metadata.portal_provenance,
         "tactical_mesh": {
             "lora_frequency_mhz": settings.LORA_FREQUENCY_MHZ,
-            "lora_band_mhz": "865–867 (India ISM)",
+            "lora_band_mhz": "865–867 MHz",
             "navic_locked": state_store.navic_locked,
+            "navic_mode": "L5+S_PASSIVE" if state_store.navic_locked else "DISABLED",
             "lora_mesh_active": state_store.lora_mesh_active,
+            "simulation": True,
         },
-        "features_loaded": features_count,
-        "payload_kb": state_store.calculate_payload_kb(),
+        "features_loaded": len(state_store.all_features),
+        "payload_kb": state.payload_kb,
     }
 
 
-@router.get(
-    "/api/state",
-    summary="Central Command Unified Spatial State",
-    response_model=TerraPulseStateResponse,
-    response_model_exclude_none=True,
-)
-async def get_state() -> TerraPulseStateResponse:
-    """
-    Retrieves the complete space-to-ground fused situational state:
-    - GeoJSON FeatureCollection across all 5 spatial layers
-    - Dynamic payload budget in Kilobytes (<100 KB target)
-    - Active NavIC + LoRa distress SOS beacons
-    - Dry evacuation corridor dispatch vectors
-    - Summary operational KPIs
-    """
+@router.get("/api/regions", response_model=list[Region])
+async def list_regions() -> list[Region]:
+    regions = []
+    for region in get_regions().values():
+        kpis = state_store.get_state_response(region.id).kpis
+        regions.append(region.model_copy(update={"risk_summary": {
+            "heavy_rain_alerts": kpis.heavy_rain_alerts,
+            "blocked_roads": kpis.submerged_roads_count,
+            "help_requests": kpis.active_sos_count,
+        }}))
+    return regions
+
+
+@router.get("/api/state", response_model=TerraPulseStateResponse, response_model_exclude_none=True)
+async def get_state(
+    region: str | None = Query(default=None, max_length=120),
+    bbox: str | None = Query(default=None, max_length=100),
+) -> TerraPulseStateResponse:
     try:
-        return state_store.get_state_response()
-    except Exception as e:
-        logger.error(f"Error compiling state response: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate situational state: {str(e)}",
-        )
+        region_id = canonical_region(region)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    try:
+        bounds = parse_bbox(bbox) if bbox is not None else None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return state_store.get_state_response(region_id, bounds)
 
 
-@router.post(
-    "/api/state/reset",
-    summary="Reset State to Baseline",
-    response_model=TerraPulseStateResponse,
-    response_model_exclude_none=True,
-)
+@router.post("/api/state/reset", response_model=TerraPulseStateResponse, response_model_exclude_none=True)
 async def reset_state() -> TerraPulseStateResponse:
-    """
-    Resets the state store to the seeded baseline catchment configuration.
-    """
     state_store.reset_to_baseline()
-    return state_store.get_state_response()
+    result = state_store.get_state_response()
+    await ws_manager.broadcast("state_updated", {"reason": "reset", "mode": result.mode})
+    return result

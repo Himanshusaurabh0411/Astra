@@ -1,24 +1,15 @@
 {
-  "name": "TerraPulse Tactical Field Responder",
-  "short_name": "TerraPulse PWA",
-  "description": "Zero-Cellular Space-to-Ground Geospatial Emergency PWA & NavIC/LoRa Mesh Relay",
+  "id": "/",
+  "name": "TerraPulse Field Responder",
+  "short_name": "TerraPulse",
+  "description": "Save help requests and find cached routes during a disaster exercise.",
   "start_url": "/field",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#050914",
-  "theme_color": "#0ea5e9",
+  "background_color": "#070B14",
+  "theme_color": "#070B14",
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

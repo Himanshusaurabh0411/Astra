@@ -1,0 +1,37 @@
+{
+  "stac_version": "1.0.0",
+  "id": "BHOONIDHI_EOS04_SAR_L2_INUNDATION_20261122",
+  "type": "Feature",
+  "properties": {
+    "portal": "Bhoonidhi Open Earth Observation Data",
+    "provider": "National Remote Sensing Centre (NRSC) / ISRO Hyderabad",
+    "satellite": "EOS-04 (RISAT-1A)",
+    "sensor": "C-band Synthetic Aperture Radar (SAR)",
+    "polarization": "VV+VH Dual Polarized",
+    "imaging_mode": "FRS-1 (Fine Resolution Stripmap)",
+    "spatial_resolution_m": 5.0,
+    "acquisition_time_utc": "2026-11-22T02:10:00Z",
+    "backscatter_threshold_db": -16.8,
+    "water_extraction_method": "Otsu Adaptive Dual-Polarimetric Thresholding",
+    "peak_water_depth_m": 1.85,
+    "flood_extent_sqkm": 14.8,
+    "catchment": "Sevan River Floodplain (Kothri Kalan / Sehore)",
+    "severity": "CRITICAL",
+    "hazard_type": "RIVERINE_INUNDATION",
+    "recommended_action": "BHOONIDHI SAR FLOOD CONFIRMED: EOS-04 C-band radar detects 1.85m flood crest along Sevan River. Causeway submerged. Evacuation along Cartosat Ridge mandatory."
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [77.0200, 23.0720],
+        [77.0700, 23.0900],
+        [77.1050, 23.1300],
+        [77.0850, 23.1480],
+        [77.0350, 23.1200],
+        [77.0120, 23.0850],
+        [77.0200, 23.0720]
+      ]
+    ]
+  }
+}

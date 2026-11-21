@@ -3,7 +3,6 @@ name = "terrapulse-backend"
 version = "1.0.0"
 description = "Space-to-Ground Geospatial Intelligence & Tactical Mesh Platform"
 authors = [{ name = "Team Zero Latency", email = "anterixclub@vitbhopal.ac.in" }]
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -16,6 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+geo = [
+    "numpy>=1.26",
+    "rasterio>=1.4",
+    "shapely>=2.0",
+]
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
@@ -29,4 +33,9 @@ build-backend = "setuptools.build_meta"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["."]
-asyncio_mode = "auto"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["data/*.geojson", "data/real_samples/**/*"]

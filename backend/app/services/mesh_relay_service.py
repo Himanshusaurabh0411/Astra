@@ -1,173 +1,124 @@
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.config import settings
+from app.models.regions import canonical_region
 from app.models.schemas import (
-    DispatchVector,
-    GeoJsonGeometry,
-    HazardSeverity,
-    MeshModel,
-    MeshSyncStatus,
-    MeshTransport,
-    NavicBand,
-    OperationalMode,
-    PositionModel,
-    SafeAsset,
-    ScenarioMode,
-    SOSPacket,
-    TriageModel,
+    AssetType, DispatchVector, GeoJsonGeometry, MeshSyncStatus, OperationalMode,
+    RoadStatus, SafeAsset, SOSPacket,
 )
 from app.models.state import state_store
+from app.models.vectors import measure_payload, rounded_coords
 
 logger = logging.getLogger("terrapulse.services.mesh")
+MAX_ACTIVE_SOS = 500
+MAX_DISPATCH_HISTORY = 50
 
 
 class MeshRelayService:
-    """
-    Domain 04: Tactical Off-Grid NavIC + LoRa Mesh Relay & Evacuation Vector Dispatch
-    - NavIC Constellation: Dual-frequency passive positioning (L5 at 1176.45 MHz + S-band at 2492.028 MHz).
-    - Tactical Radio: Sub-GHz LoRa (865–867 MHz India ISM license-free band).
-    - Operational Role: Zero-cellular peer-to-peer distress beaconing & dry evacuation corridor distribution.
-    """
-
-    def __init__(self):
-        self.freq_mhz = settings.LORA_FREQUENCY_MHZ
-        self.max_hops = settings.MAX_MESH_HOPS
-        self.navic_enabled = settings.NAVIC_ENABLED
+    """Simulate radio hops and store acknowledged packets for the current exercise."""
 
     def register_or_enrich_sos(self, packet: SOSPacket) -> SOSPacket:
-        """
-        Validates, simulates mesh propagation hops, enriches positioning,
-        and registers distress beacon in the state store.
-        """
-        # Validate or populate position
-        if packet.position.navic_band not in NavicBand:
-            packet.position.navic_band = NavicBand.L5
+        existing = state_store.sos_packets.get(packet.sos_id)
+        if existing:
+            return existing
 
-        # Simulate mesh hop advancement
-        if packet.mesh.hop_count < packet.mesh.max_hops:
-            packet.mesh.hop_count += 1
-
-        # Simulate relay node trail
-        relay_node = f"NODE-RELAY-{packet.mesh.hop_count:02d}"
-        if relay_node not in packet.mesh.relay_path:
-            packet.mesh.relay_path.append(relay_node)
-
-        # Update synchronization status based on backhaul connectivity
-        if state_store.cellular_online:
-            packet.mesh.sync_status = MeshSyncStatus.SYNCED_COMMAND
-        else:
-            packet.mesh.sync_status = MeshSyncStatus.RELAYED_MESH
-
-        # Persist in state store
+        packet.mesh.max_hops = min(packet.mesh.max_hops, settings.MAX_MESH_HOPS)
+        next_hop = min(max(2, packet.mesh.hop_count + 1), packet.mesh.max_hops)
+        relays = packet.mesh.relay_path[:min(packet.mesh.hop_count, next_hop)]
+        relays.extend(f"NODE-RELAY-{hop:02d}" for hop in range(len(relays) + 1, next_hop + 1))
+        packet.mesh.hop_count = next_hop
+        packet.mesh.relay_path = relays
+        packet.mesh.sync_status = (
+            MeshSyncStatus.SYNCED_COMMAND if state_store.cellular_online else MeshSyncStatus.RELAYED_MESH
+        )
         state_store.sos_packets[packet.sos_id] = packet
         state_store.last_updated = datetime.now(timezone.utc).isoformat()
-        logger.info(
-            f"SOS beacon registered/relayed: id={packet.sos_id}, severity={packet.triage.severity}, "
-            f"hops={packet.mesh.hop_count}, status={packet.mesh.sync_status}"
-        )
         return packet
 
     def build_dispatch_vector(
         self,
-        target_zone_id: str,
-        alert_headline: str,
-        corridor_coordinates: Optional[List[List[float]]] = None,
-        safe_asset_name: Optional[str] = None,
-        safe_lat: Optional[float] = None,
-        safe_lng: Optional[float] = None,
+        target_zone_id: str | None = None,
+        alert_headline: str | None = None,
+        corridor_coordinates: list[list[float]] | None = None,
+        safe_asset_name: str | None = None,
+        safe_lat: float | None = None,
+        safe_lng: float | None = None,
+        region: str | None = None,
+        corridor_id: str | None = None,
     ) -> DispatchVector:
-        """
-        Compiles a lightweight dry evacuation corridor vector (<48 KB)
-        tailored for low-bandwidth broadcast over NavIC messaging and LoRa mesh.
-        """
-        dispatch_suffix = uuid4().hex[:6].upper()
-        dispatch_id = f"DSP-{dispatch_suffix}"
+        region_id = canonical_region(region)
+        if region_id == "all-india":
+            region_id = "central-india"
+        destination_id = None
 
-        # Default to Cartosat DEM high ridge coordinates if none provided
-        coordinates = corridor_coordinates or [
-            [77.0160, 23.0805],
-            [77.0350, 23.1100],
-            [77.0600, 23.1450],
-            [77.0950, 23.1850],
-            [77.1250, 23.2100],
-        ]
+        if corridor_coordinates is None:
+            features = [f for f in state_store.all_features if f.properties.region_id == region_id]
+            routes = [
+                f for f in features if f.properties.road_status == RoadStatus.CORRIDOR
+                and f.geometry.type == "LineString" and f.geometry.coordinates
+            ]
+            route = next((f for f in routes if not corridor_id or f.id == corridor_id), None)
+            shelters = [f for f in features if f.properties.asset_type == AssetType.SHELTER and f.geometry.type == "Point"]
+            if route is None or not shelters:
+                raise ValueError("This area has no route and shelter pair to share.")
+            corridor_coordinates = route.geometry.coordinates
+            first, last = corridor_coordinates[0], corridor_coordinates[-1]
 
-        safe_asset = SafeAsset(
-            name=safe_asset_name or "VIT Bhopal Auditorium & Relief Shelter (Kothri Kalan)",
-            lat=safe_lat or 23.0805,
-            lng=safe_lng or 77.0160,
-            asset_id="BHUVAN-ASSET-SHELTER-02",
-        )
+            def distance(asset, point):
+                x, y = asset.geometry.coordinates[:2]
+                return (x - point[0]) ** 2 + (y - point[1]) ** 2
 
-        # Calculate payload size in KB
-        temp_dict = {
-            "dispatch_id": dispatch_id,
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "mode": state_store.mode,
-            "target_zone_id": target_zone_id,
-            "alert_headline": alert_headline,
-            "evacuation_corridor": {"type": "LineString", "coordinates": coordinates},
-            "safe_asset": safe_asset.model_dump(),
-        }
-        raw_bytes = len(json.dumps(temp_dict).encode("utf-8"))
-        payload_kb = round(min(raw_bytes / 1024, 48.0), 2)
+            shelter = min(shelters, key=lambda asset: min(distance(asset, first), distance(asset, last)))
+            if min(distance(shelter, first), distance(shelter, last)) > 0.02 ** 2:
+                raise ValueError("This route has no mapped shelter at either end.")
+            if distance(shelter, first) < distance(shelter, last):
+                corridor_coordinates = list(reversed(corridor_coordinates))
+            destination_lng, destination_lat = shelter.geometry.coordinates[:2]
+            safe_lat, safe_lng = destination_lat, destination_lng
+            safe_asset_name = shelter.properties.title
+            destination_id = shelter.id
+            alert_headline = alert_headline or f"Follow {route.properties.title} towards {safe_asset_name}."
 
+        if safe_lat is None or safe_lng is None:
+            safe_lng, safe_lat = corridor_coordinates[-1][:2]
         dispatch = DispatchVector(
-            dispatch_id=dispatch_id,
+            dispatch_id=f"DSP-{uuid4().hex[:12].upper()}",
             issued_at=datetime.now(timezone.utc).isoformat(),
             mode=state_store.mode,
-            target_zone_id=target_zone_id,
-            alert_headline=alert_headline,
-            evacuation_corridor=GeoJsonGeometry(type="LineString", coordinates=coordinates),
-            safe_asset=safe_asset,
-            payload_kb=payload_kb,
+            target_zone_id=target_zone_id or region_id,
+            alert_headline=alert_headline or "Follow the marked exercise route to the relief point.",
+            evacuation_corridor=GeoJsonGeometry(type="LineString", coordinates=rounded_coords(corridor_coordinates)),
+            safe_asset=SafeAsset(
+                name=safe_asset_name or "Relief point",
+                lat=safe_lat,
+                lng=safe_lng,
+                asset_id=destination_id,
+            ),
+            payload_kb=0.0,
         )
-
-        state_store.dispatches[dispatch_id] = dispatch
-        state_store.last_updated = datetime.now(timezone.utc).isoformat()
-        logger.info(f"Evacuation dispatch compiled: id={dispatch_id}, payload={payload_kb} KB")
+        size = measure_payload(dispatch, dispatch)
+        if size >= min(48.0, settings.MAX_VECTOR_PAYLOAD_KB) * 1000:
+            raise ValueError("This route is too large to share. Choose a shorter route.")
+        state_store.dispatches[dispatch.dispatch_id] = dispatch
+        while len(state_store.dispatches) > MAX_DISPATCH_HISTORY:
+            state_store.dispatches.pop(next(iter(state_store.dispatches)))
+        state_store.last_updated = dispatch.issued_at
         return dispatch
 
-    def switch_operational_mode(self, new_mode: OperationalMode) -> Dict[str, Any]:
-        """
-        Switches between NORMAL, CELL_BLACKOUT_MESH_ACTIVE, and BACKHAUL_SYNC operational states.
-        """
-        state_store.mode = new_mode
+    def switch_operational_mode(self, mode: OperationalMode) -> None:
+        state_store.mode = mode
+        state_store.cellular_online = mode != OperationalMode.CELL_BLACKOUT_MESH_ACTIVE
+        state_store.lora_mesh_active = mode != OperationalMode.NORMAL
 
-        if new_mode == OperationalMode.CELL_BLACKOUT_MESH_ACTIVE:
-            state_store.cellular_online = False
-            state_store.lora_mesh_active = True
-            if state_store.features_collection:
-                state_store.features_collection.metadata.scenario_mode = ScenarioMode.TELECOM_BLACKOUT_MESH
-
-            # Update queued SOS packets
-            for packet in state_store.sos_packets.values():
-                if packet.mesh.sync_status == MeshSyncStatus.QUEUED_OFFLINE:
-                    packet.mesh.sync_status = MeshSyncStatus.RELAYED_MESH
-
-            logger.warning("CELLULAR BLACKOUT SIMULATION ACTIVATED: NavIC + LoRa Tactical Mesh operational.")
-
-        else:
-            state_store.cellular_online = True
-            state_store.lora_mesh_active = (new_mode == OperationalMode.BACKHAUL_SYNC)
-
-            # Mark all mesh packets synced to Central Command
-            for packet in state_store.sos_packets.values():
+        for packet in state_store.sos_packets.values():
+            if state_store.cellular_online:
                 packet.mesh.sync_status = MeshSyncStatus.SYNCED_COMMAND
-
-            logger.info(f"Backhaul operational: mode set to {new_mode}")
+            elif packet.mesh.sync_status == MeshSyncStatus.QUEUED_OFFLINE:
+                packet.mesh.sync_status = MeshSyncStatus.RELAYED_MESH
 
         state_store.last_updated = datetime.now(timezone.utc).isoformat()
-        return {
-            "mode": state_store.mode,
-            "cellular_online": state_store.cellular_online,
-            "lora_mesh_active": state_store.lora_mesh_active,
-            "active_sos_count": len(state_store.sos_packets),
-        }
 
 
 mesh_relay_service = MeshRelayService()

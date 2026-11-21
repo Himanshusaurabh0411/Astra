@@ -1,0 +1,63 @@
+name: terrapulse
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "127.0.0.1:${TERRAPULSE_API_PORT:-8000}:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      INDIA_BBOX: ${INDIA_BBOX:-68.0,6.5,97.5,37.5}
+      RAINFALL_THRESHOLD_MM_HR: ${RAINFALL_THRESHOLD_MM_HR:-15.0}
+      MAX_VECTOR_PAYLOAD_KB: ${MAX_VECTOR_PAYLOAD_KB:-100.0}
+      DEFAULT_SCENARIO_MODE: ${DEFAULT_SCENARIO_MODE:-NORMAL}
+      SEED_DATA_PATH: ${SEED_DATA_PATH:-}
+      PORTAL_FETCH_TIMEOUT_SECONDS: ${PORTAL_FETCH_TIMEOUT_SECONDS:-3.0}
+      MOSDAC_API_URL: ${MOSDAC_API_URL:-}
+      MOSDAC_API_TOKEN: ${MOSDAC_API_TOKEN:-}
+      MOSDAC_SAMPLE_PATH: ${MOSDAC_SAMPLE_PATH:-}
+      BHOONIDHI_API_URL: ${BHOONIDHI_API_URL:-}
+      BHOONIDHI_API_TOKEN: ${BHOONIDHI_API_TOKEN:-}
+      BHOONIDHI_SAMPLE_PATH: ${BHOONIDHI_SAMPLE_PATH:-}
+      VEDAS_API_URL: ${VEDAS_API_URL:-}
+      VEDAS_API_TOKEN: ${VEDAS_API_TOKEN:-}
+      VEDAS_SAMPLE_PATH: ${VEDAS_SAMPLE_PATH:-}
+      VEDAS_AGRI_SAMPLE_PATH: ${VEDAS_AGRI_SAMPLE_PATH:-}
+      BHUVAN_WFS_URL: ${BHUVAN_WFS_URL:-}
+      BHUVAN_API_TOKEN: ${BHUVAN_API_TOKEN:-}
+      BHUVAN_SAMPLE_PATH: ${BHUVAN_SAMPLE_PATH:-}
+      BHUVAN_LULC_SAMPLE_PATH: ${BHUVAN_LULC_SAMPLE_PATH:-}
+      LORA_FREQUENCY_MHZ: ${LORA_FREQUENCY_MHZ:-865.2}
+      LORA_BANDWIDTH_KHZ: ${LORA_BANDWIDTH_KHZ:-125}
+      MAX_MESH_HOPS: ${MAX_MESH_HOPS:-7}
+      NAVIC_ENABLED: ${NAVIC_ENABLED:-true}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 8
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        BACKEND_URL: http://backend:8000
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    ports:
+      - "127.0.0.1:${TERRAPULSE_WEB_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 8
+      start_period: 5s
+    restart: unless-stopped

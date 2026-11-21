@@ -1,633 +1,450 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { Crosshair, Layers3, Minus, Plus, Radar } from "lucide-react";
+import basemap from "@/lib/india-basemap.json";
+import { loadGoogleMaps, onGoogleAuthFailure, HAS_GOOGLE_MAPS, type GoogleMap, type MapStyle } from "@/lib/googleMaps";
+import { INDIA, INDIA_REGIONS, inBounds, type Bounds, type Point, type Region } from "@/lib/regions";
 import {
-  GeoJsonFeature,
-  GeoJsonFeatureCollection,
-  SOSPacket,
-  DispatchVector,
+  featurePoint, featureRegion, type DispatchVector, type GeoJsonFeature, type GeoJsonGeometry, type SOSPacket,
 } from "@/lib/terrapulseClient";
-import {
-  Plus,
-  Minus,
-  Crosshair,
-  Layers,
-  AlertTriangle,
-} from "lucide-react";
+import { mapColor, type ActiveLayers } from "@/lib/layers";
 
-export interface CommandMapProps {
-  features?: GeoJsonFeatureCollection;
+export interface MapTarget {
+  center: Point;
+  zoom: number;
+  bbox?: Bounds;
+  label: string;
+}
+export type MapSelection = GeoJsonFeature | SOSPacket;
+
+interface Props {
+  target: MapTarget;
+  features: GeoJsonFeature[];
+  activeLayers: ActiveLayers;
   sosPackets?: SOSPacket[];
   dispatches?: DispatchVector[];
-  activeLayers: {
-    mosdac_rain: boolean;
-    bhoonidhi_flood: boolean;
-    vedas_roads: boolean;
-    vedas_corridors: boolean;
-    bhuvan_assets: boolean;
-    sos_mesh: boolean;
-  };
-  onToggleLayer: (layerKey: string) => void;
-  onSelectFeature?: (item: any) => void;
-  selectedItem?: any;
-  onDispatchCorridor?: (corridorFeature: any) => void;
-  isAdvancedView?: boolean;
+  offline?: boolean;
+  onSelect?: (item: MapSelection) => void;
+  onRegion?: (region: Region) => void;
+  onPoint?: (point: Point) => void;
+  onLayers?: () => void;
+  location?: Point;
 }
 
-// Bounding box for Kothri Kalan / Sehore / Bhopal basin
-const BASIN_BBOX = {
-  minLng: 77.00,
-  maxLng: 77.44,
-  minLat: 23.06,
-  maxLat: 23.28,
-};
+interface Dimensions { width: number; height: number }
+interface View { center: Point; scale: number }
+interface Marker {
+  id: string; label: string; point: Point; color: string; pulse?: boolean;
+  shape?: "asset" | "sos"; select?: () => void; offset?: Point;
+}
 
-export function CommandMap({
-  features,
-  sosPackets = [],
-  dispatches = [],
-  activeLayers,
-  onToggleLayer,
-  onSelectFeature,
-  selectedItem,
-  onDispatchCorridor,
-  isAdvancedView = false,
-}: CommandMapProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1.0);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [viewBox, setViewBox] = useState({ width: 900, height: 500 });
-  const [mapViewMode, setMapViewMode] = useState<"satellite" | "map">("satellite");
-  const [hoveredItem, setHoveredItem] = useState<{ item: any; x: number; y: number } | null>(null);
+const MODES = [
+  { key: "satellite", label: "Satellite" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "roadmap", label: "Map" },
+] as const;
+const SOS_COLOR = "#FF6868";
+const ROUTE_COLOR = "#F5D547";
+const PULSE_COLOR = "#FF8A3D";
+const REGION_LABEL_ANCHORS: Partial<Record<string, "start" | "end">> = {
+  "central-india": "end",
+  "indo-gangetic": "end",
+  "northeast-india": "start",
+};
+const LOCAL_PLACES = [
+  { name: "NEW DELHI", point: [77.209, 28.614] },
+  { name: "KOLKATA", point: [88.364, 22.573] },
+  { name: "HYDERABAD", point: [78.487, 17.385] },
+] as const;
+
+const boundsForImage = basemap.terrainBounds as Bounds;
+const borderPaths = basemap.polygons.map(({ india, rings }) => ({
+  india,
+  path: rings.map((ring) => ring.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ") + "Z").join(" "),
+}));
+
+function scaleFor(target: MapTarget, size: Dimensions): number {
+  const [west, south, east, north] = target.bbox ?? INDIA.bbox;
+  const regional = target.bbox && north - south < 22;
+  if (!target.bbox) return 2 ** (target.zoom - 4) * 13;
+  const xScale = Math.cos(target.center[1] * Math.PI / 180);
+  return Math.min((size.width - (regional ? 112 : 78)) / ((east - west) * xScale),
+    (size.height - (regional ? 72 : 38)) / (north - south));
+}
+
+function geometryPath(geometry: GeoJsonGeometry, project: (point: Point) => Point): string {
+  const line = (points: Point[]) => points.map((point, i) => {
+    const [x, y] = project(point);
+    return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  if (geometry.type === "LineString") return line(geometry.coordinates);
+  if (geometry.type === "Polygon") return geometry.coordinates.map((ring) => line(ring) + "Z").join(" ");
+  if (geometry.type === "MultiPolygon") return geometry.coordinates.flatMap((poly) => poly.map((ring) => line(ring) + "Z")).join(" ");
+  return "";
+}
+
+function activate(event: KeyboardEvent, select: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    select();
+  }
+}
+
+export default function CommandMap({
+  target, features, activeLayers, sosPackets = [], dispatches = [], offline = false,
+  onSelect, onRegion, onPoint, onLayers, location,
+}: Props) {
+  const shell = useRef<HTMLDivElement>(null);
+  const googleHost = useRef<HTMLDivElement>(null);
+  const googleMap = useRef<GoogleMap>();
+  const [size, setSize] = useState<Dimensions>({ width: 840, height: 450 });
+  const [mapStyle, setMapStyle] = useState<MapStyle>("satellite");
+  const [googleStatus, setGoogleStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
+  const [view, setView] = useState<View>(() => ({ center: target.center, scale: scaleFor(target, size) }));
+  const currentView = useRef(view);
+  const animation = useRef<number>();
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x: number; y: number; center: Point; scale: number; moved: boolean }>();
+  const selectItem = useRef(onSelect);
+  const currentTarget = useRef(target);
+  const currentStyle = useRef(mapStyle);
+  selectItem.current = onSelect;
+  currentTarget.current = target;
+  currentStyle.current = mapStyle;
+  currentView.current = view;
 
   useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setViewBox({
-          width: containerRef.current.clientWidth || 900,
-          height: containerRef.current.clientHeight || 500,
-        });
-      }
-    };
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    if (!shell.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(shell.current);
+    return () => observer.disconnect();
   }, []);
 
-  // Coordinate Projection: [lng, lat] to SVG [x, y]
-  const project = (lng: number, lat: number) => {
-    const lngSpan = BASIN_BBOX.maxLng - BASIN_BBOX.minLng;
-    const latSpan = BASIN_BBOX.maxLat - BASIN_BBOX.minLat;
-
-    const normX = (lng - BASIN_BBOX.minLng) / lngSpan;
-    const normY = 1.0 - (lat - BASIN_BBOX.minLat) / latSpan;
-
-    const pad = 48;
-    const mapW = viewBox.width - pad * 2;
-    const mapH = viewBox.height - pad * 2;
-
-    const rawX = pad + normX * mapW;
-    const rawY = pad + normY * mapH;
-
-    const centerX = viewBox.width / 2;
-    const centerY = viewBox.height / 2;
-
-    const finalX = (rawX - centerX) * zoom + centerX + pan.x;
-    const finalY = (rawY - centerY) * zoom + centerY + pan.y;
-
-    return [finalX, finalY];
-  };
-
-  const focusCoordinates = (lng: number, lat: number) => {
-    const [targetX, targetY] = project(lng, lat);
-    const centerX = viewBox.width / 2;
-    const centerY = viewBox.height / 2;
-    setPan((p) => ({
-      x: p.x + (centerX - targetX) * 0.65,
-      y: p.y + (centerY - targetY) * 0.65,
-    }));
-  };
-
-  const handleFeatureClick = (item: any) => {
-    onSelectFeature?.(item);
-
-    if (item.sos_id && item.position) {
-      focusCoordinates(item.position.lng, item.position.lat);
-    } else if (item.geometry) {
-      if (item.geometry.type === "Point") {
-        focusCoordinates(item.geometry.coordinates[0], item.geometry.coordinates[1]);
-      } else if (item.geometry.type === "LineString" && item.geometry.coordinates[0]) {
-        const midIdx = Math.floor(item.geometry.coordinates.length / 2);
-        focusCoordinates(item.geometry.coordinates[midIdx][0], item.geometry.coordinates[midIdx][1]);
-      } else if (item.geometry.type === "Polygon" && item.geometry.coordinates[0]?.[0]) {
-        focusCoordinates(item.geometry.coordinates[0][0][0], item.geometry.coordinates[0][0][1]);
-      }
+  useEffect(() => {
+    const next = { center: target.center, scale: Math.max(2, scaleFor(target, size)) };
+    const start = currentView.current;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setView(next);
+    } else {
+      const started = performance.now();
+      const animate = (time: number) => {
+        const fraction = Math.min(1, (time - started) / 300);
+        const t = 1 - (1 - fraction) ** 3;
+        setView({
+          center: [
+            start.center[0] + (next.center[0] - start.center[0]) * t,
+            start.center[1] + (next.center[1] - start.center[1]) * t,
+          ],
+          scale: start.scale * (next.scale / start.scale) ** t,
+        });
+        if (fraction < 1) animation.current = requestAnimationFrame(animate);
+      };
+      animation.current = requestAnimationFrame(animate);
     }
+    const map = googleMap.current;
+    if (map) {
+      map.panTo({ lng: target.center[0], lat: target.center[1] });
+      map.setZoom(target.zoom);
+    }
+    return () => { if (animation.current !== undefined) cancelAnimationFrame(animation.current); };
+  }, [target, size]);
+
+  useEffect(() => {
+    if (offline || !HAS_GOOGLE_MAPS) {
+      setGoogleStatus("idle");
+      return;
+    }
+    const host = googleHost.current;
+    if (!host) return;
+    let stopped = false;
+    let tileWait: ReturnType<typeof setTimeout> | undefined;
+    let tileListener: { remove(): void } | undefined;
+    setGoogleStatus("loading");
+    const fallback = () => {
+      if (!stopped) {
+        setGoogleStatus("fallback");
+        googleMap.current = undefined;
+        host.replaceChildren();
+      }
+    };
+    const stopAuth = onGoogleAuthFailure(fallback);
+    const observer = new MutationObserver(() => {
+      if (host.querySelector(".gm-err-container")) fallback();
+    });
+    observer.observe(host, { childList: true, subtree: true });
+
+    void loadGoogleMaps().then((api) => {
+      if (stopped) return;
+      const mapTarget = currentTarget.current;
+      const map = new api.Map(host, {
+        center: { lng: mapTarget.center[0], lat: mapTarget.center[1] }, zoom: mapTarget.zoom,
+        minZoom: 3, maxZoom: 18, mapTypeId: currentStyle.current,
+        disableDefaultUI: true, clickableIcons: false, gestureHandling: "cooperative",
+        backgroundColor: "#14242c", keyboardShortcuts: true,
+      });
+      googleMap.current = map;
+      tileListener = map.addListener("tilesloaded", () => {
+        clearTimeout(tileWait);
+        if (!stopped && googleMap.current === map) setGoogleStatus("ready");
+      });
+      tileWait = setTimeout(fallback, 7000);
+    }).catch(fallback);
+
+    return () => {
+      stopped = true;
+      clearTimeout(tileWait);
+      tileListener?.remove();
+      stopAuth();
+      observer.disconnect();
+      googleMap.current = undefined;
+      host.replaceChildren();
+    };
+  }, [offline]);
+
+  useEffect(() => {
+    googleMap.current?.setMapTypeId(mapStyle);
+  }, [mapStyle]);
+
+  const visible = useMemo(() => features.filter((feature) =>
+    activeLayers[feature.properties.layer] && feature.properties.record_kind !== "crop_stress"), [features, activeLayers]);
+  const sos = activeLayers.sos_mesh ? sosPackets : [];
+  const routes = activeLayers.vedas_corridors ? dispatches : [];
+  const usingGoogle = googleStatus === "ready" && !offline;
+
+  useEffect(() => {
+    if (!usingGoogle || !googleMap.current || !window.google) return;
+    const { data } = googleMap.current;
+    const items = new Map<string, MapSelection>();
+    const overlays = visible.map((f, i) => {
+      const key = `f-${i}`;
+      items.set(key, f);
+      return { type: "Feature", geometry: f.geometry, properties: { key, color: mapColor(f.properties) } };
+    });
+    sos.forEach((packet) => {
+      const key = packet.sos_id;
+      items.set(key, packet);
+      overlays.push({
+        type: "Feature", geometry: { type: "Point", coordinates: [packet.position.lng, packet.position.lat] },
+        properties: { key, color: SOS_COLOR },
+      });
+    });
+    for (const dispatch of routes) overlays.push({
+      type: "Feature", geometry: dispatch.evacuation_corridor, properties: { key: "", color: ROUTE_COLOR },
+    });
+    if (location) overlays.push({
+      type: "Feature", geometry: { type: "Point", coordinates: location }, properties: { key: "", color: PULSE_COLOR },
+    });
+    const circle = window.google.maps.SymbolPath.CIRCLE;
+    data.addGeoJson({ type: "FeatureCollection", features: overlays });
+    data.setStyle((feature) => {
+      const color = String(feature.getProperty("color"));
+      return {
+        fillColor: color, fillOpacity: .23, strokeColor: color, strokeWeight: 2,
+        icon: { path: circle, scale: 6, fillColor: color, fillOpacity: .95, strokeColor: "#0a1720", strokeWeight: 2 },
+      };
+    });
+    const listener = data.addListener("click", ({ feature }) => {
+      const item = items.get(String(feature.getProperty("key")));
+      if (item) selectItem.current?.(item);
+    });
+    return () => { listener.remove(); data.forEach((feature) => data.remove(feature)); };
+  }, [visible, sos, routes, location, usingGoogle]);
+
+  const cos = Math.cos(view.center[1] * Math.PI / 180);
+  const sx = view.scale * cos;
+  const ox = size.width / 2 - view.center[0] * sx;
+  const oy = size.height / 2 + view.center[1] * view.scale;
+  const project = ([lng, lat]: Point): Point => [ox + lng * sx, oy - lat * view.scale];
+  const unproject = (x: number, y: number): Point => [(x - ox) / sx, (oy - y) / view.scale];
+  const [pictureX, pictureY] = project([boundsForImage[0], boundsForImage[3]]);
+  const national = view.scale <= 23;
+  const showLabels = mapStyle !== "satellite" || national;
+  const drawFeature = (feature: GeoJsonFeature) =>
+    feature.geometry.type !== "Point" && (!national || feature.properties.layer === "bhoonidhi_flood");
+  const pointMarkers: Marker[] = visible.filter((f) => f.geometry.type === "Point").map((f, index) => ({
+    id: f.id ?? `feature-${index}`, label: f.properties.title, point: featurePoint(f),
+    color: mapColor(f.properties), shape: f.properties.layer === "bhuvan_assets" ? "asset" : undefined,
+    pulse: f.properties.severity === "HIGH" || f.properties.severity === "CRITICAL",
+    select: () => onSelect?.(f),
+  }));
+  const sosMarkers: Marker[] = sos.map((packet) => ({
+    id: packet.sos_id, label: `${packet.triage.severity.toLowerCase()} help request · ${packet.triage.headcount} people`,
+    point: [packet.position.lng, packet.position.lat], color: SOS_COLOR, shape: "sos", pulse: true,
+    select: () => onSelect?.(packet),
+  }));
+  const regionMarkers: Marker[] = INDIA_REGIONS.flatMap((region) => {
+    const regional = visible.filter((f) => featureRegion(f).id === region.id);
+    const flood = regional.find((f) => f.properties.layer === "bhoonidhi_flood" && f.properties.water_depth_m);
+    const heavy = regional.find((f) => f.properties.layer === "mosdac_rain" && f.properties.severity === "HIGH");
+    const location = region.places[0]?.center ?? region.center;
+    const nudge: Point = region.id === "arid-belt" ? [73.0243, 26.2389] : location;
+    return regional.length || onRegion ? [{
+      id: region.id, label: region.short_name, point: nudge,
+      color: heavy ? PULSE_COLOR : flood ? mapColor(flood.properties) : "#B79CFF",
+      pulse: !!heavy || (flood?.properties.water_depth_m ?? 0) >= .75,
+      select: onRegion ? () => onRegion(region) : undefined,
+    }] : [];
+  });
+  const markers = national
+    ? [...regionMarkers, ...sosMarkers.slice(0, 1).map((marker) => ({ ...marker, offset: [15, 8] as Point }))]
+    : [...pointMarkers, ...sosMarkers];
+  if (location) markers.push({ id: "location", label: "My location", point: location, color: PULSE_COLOR });
+
+  const recenter = () => {
+    if (animation.current !== undefined) cancelAnimationFrame(animation.current);
+    setView({ center: target.center, scale: Math.max(2, scaleFor(target, size)) });
+    googleMap.current?.panTo({ lng: target.center[0], lat: target.center[1] });
+    googleMap.current?.setZoom(target.zoom);
   };
 
-  const polygonToPath = (coords: number[][][]) => {
-    if (!coords || !coords[0]) return "";
-    return (
-      coords[0]
-        .map((pt, i) => {
-          const [x, y] = project(pt[0], pt[1]);
-          return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-        })
-        .join(" ") + " Z"
-    );
+  const zoom = (direction: number) => {
+    if (animation.current !== undefined) cancelAnimationFrame(animation.current);
+    setView((previous) => ({ ...previous, scale: Math.max(3, Math.min(18000, previous.scale * 1.54 ** direction)) }));
+    const map = googleMap.current;
+    if (map && usingGoogle) map.setZoom((map.getZoom() ?? target.zoom) + direction);
   };
 
-  const lineToPath = (coords: number[][]) => {
-    if (!coords) return "";
-    return coords
-      .map((pt, i) => {
-        const [x, y] = project(pt[0], pt[1]);
-        return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-      })
-      .join(" ");
+  const startDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0 || (event.target as Element).closest("[data-map-action]")) return;
+    if (animation.current !== undefined) cancelAnimationFrame(animation.current);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { x: event.clientX, y: event.clientY, center: view.center, scale: view.scale, moved: false };
   };
-
-  // Drag Pan Handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).tagName === "BUTTON") return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
+  const moveDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const start = drag.current;
+    if (!start) return;
+    const dx = start.x - event.clientX;
+    const dy = event.clientY - start.y;
+    if (!start.moved && Math.hypot(dx, dy) < 4) return;
+    start.moved = true;
+    setDragging(true);
+    setView({
+      scale: start.scale,
+      center: [Math.min(104, Math.max(58, start.center[0] + dx / (start.scale * cos))),
+        Math.min(42, Math.max(4, start.center[1] + dy / start.scale))],
     });
   };
-
-  const handleMouseUp = () => setIsDragging(false);
-
-  const resetView = () => {
-    setZoom(1.0);
-    setPan({ x: 0, y: 0 });
-    onSelectFeature?.(null);
+  const stopDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const start = drag.current;
+    drag.current = undefined;
+    setDragging(false);
+    if (!start || start.moved || !onPoint || event.type === "pointercancel") return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const point = unproject(event.clientX - box.left, event.clientY - box.top);
+    if (inBounds(point, INDIA.bbox)) onPoint(point);
   };
 
-  const featureList = features?.features || [];
-
-  // Focal Epicenter (Sevan River Crossing / Kothri Kalan)
-  const [epicenterX, epicenterY] = project(77.0580, 23.0910);
+  const kmPerPixel = 111.32 / Math.max(1, view.scale);
+  const scaleKm = [1000, 500, 250, 100, 50, 25, 10, 5, 2, 1].find((km) => km / kmPerPixel <= 106) ?? .5;
+  const googleBadge = usingGoogle ? "Google Maps" : googleStatus === "loading" ? "Loading Google Maps…" : (
+    mapStyle === "roadmap" ? "Local vector map" : "Bundled satellite terrain"
+  );
+  const gridStep = national ? 5 : view.scale < 150 ? 1 : .1;
+  const firstLongitude = Math.ceil((view.center[0] - size.width / 2 / sx) / gridStep) * gridStep;
+  const firstLatitude = Math.ceil((view.center[1] - size.height / 2 / view.scale) / gridStep) * gridStep;
+  const longitudes = Array.from({ length: Math.ceil(size.width / sx / gridStep) }, (_, index) => firstLongitude + index * gridStep);
+  const latitudes = Array.from({ length: Math.ceil(size.height / view.scale / gridStep) }, (_, index) => firstLatitude + index * gridStep);
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full bg-[#0A101D] select-none overflow-hidden cursor-crosshair rounded-2xl"
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    >
-      {/* SVG GIS Vector Map Surface */}
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
-        className="w-full h-full block"
-      >
+    <div className="map-canvas" ref={shell} aria-label={`Interactive map of ${target.label}`}>
+      <svg className={`local-map ${dragging ? "dragging" : ""}`} width="100%" height="100%"
+        viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="India map and map markers"
+        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag}>
         <defs>
-          {/* Topographic Contour Texture Pattern */}
-          <pattern id="survey-contours" width="120" height="120" patternUnits="userSpaceOnUse">
-            <path
-              d="M0 20 Q 30 10, 60 25 T 120 20 M0 45 Q 40 35, 75 50 T 120 40 M0 70 Q 25 80, 60 65 T 120 75 M0 95 Q 50 85, 80 100 T 120 90"
-              fill="none"
-              stroke="#ffffff"
-              strokeWidth="0.5"
-              strokeOpacity="0.04"
-              strokeDasharray="3 2"
-            />
-          </pattern>
-
-          {/* Satellite Multi-Spectral Terrain Texture Pattern */}
-          <radialGradient id="sat-veg-1" cx="35%" cy="40%" r="65%">
-            <stop offset="0%" stopColor="#1E3321" />
-            <stop offset="50%" stopColor="#142618" />
-            <stop offset="100%" stopColor="#0B1710" />
-          </radialGradient>
-          <radialGradient id="sat-ridge-1" cx="65%" cy="30%" r="55%">
-            <stop offset="0%" stopColor="#2E2A1A" />
-            <stop offset="70%" stopColor="#1F1D13" />
-            <stop offset="100%" stopColor="#0E1410" />
-          </radialGradient>
-
-          {/* Rain Diagonal Hatch */}
-          <pattern id="rain-diag" width="12" height="12" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-            <line x1="0" y1="0" x2="0" y2="12" stroke="#5BC0FF" strokeWidth="1.2" strokeOpacity="0.35" />
-          </pattern>
+          <radialGradient id="map-vignette"><stop offset="45%" stopColor="#030916" stopOpacity="0" /><stop offset="100%" stopColor="#030916" stopOpacity=".28" /></radialGradient>
         </defs>
-
-        {/* 1. Base Layer (Satellite Terrain vs Cartographic Map) */}
-        {mapViewMode === "satellite" ? (
-          <g>
-            {/* Rich Photographic Satellite Image Base */}
-            <image
-              href="/sat-terrain.jpg"
-              x="0"
-              y="0"
-              width={viewBox.width}
-              height={viewBox.height}
-              preserveAspectRatio="xMidYMid slice"
-              className="opacity-95"
-            />
-            {/* Subtle multi-spectral contrast overlays */}
-            <rect width={viewBox.width} height={viewBox.height} fill="url(#sat-veg-1)" opacity="0.3" pointerEvents="none" />
-          </g>
-        ) : (
-          <g>
-            <rect width={viewBox.width} height={viewBox.height} fill="#0A0F1D" />
-            <rect width={viewBox.width} height={viewBox.height} fill="url(#survey-contours)" pointerEvents="none" />
+        <rect width={size.width} height={size.height} fill="var(--map-sea)" />
+        {mapStyle !== "roadmap" && (
+          <image href="/india-terrain.webp" x={pictureX} y={pictureY}
+            width={(boundsForImage[2] - boundsForImage[0]) * sx}
+            height={(boundsForImage[3] - boundsForImage[1]) * view.scale} preserveAspectRatio="none" />
+        )}
+        <g transform={`matrix(${sx} 0 0 ${-view.scale} ${ox} ${oy})`} pointerEvents="none">
+          {borderPaths.map(({ path, india }, index) => <path key={index} d={path}
+            fill={mapStyle === "roadmap" ? india ? "var(--map-land)" : "var(--map-neighbor)" : "none"}
+            stroke={india ? "var(--map-border)" : "var(--map-border-muted)"}
+            strokeWidth={india ? 1.05 : .55} strokeOpacity={mapStyle === "satellite" ? .6 : .95} vectorEffect="non-scaling-stroke" />)}
+        </g>
+        <g className="map-grid" pointerEvents="none" aria-hidden="true">
+          {longitudes.map((lng) => { const [x] = project([lng, 0]); return <line key={lng} x1={x} x2={x} y1="0" y2={size.height} />; })}
+          {latitudes.map((lat) => { const [, y] = project([0, lat]); return <line key={lat} x1="0" x2={size.width} y1={y} y2={y} />; })}
+        </g>
+        {national && (
+          <g className="map-geography" aria-hidden="true" pointerEvents="none">
+            <text x={project([81.5, 23.1])[0]} y={project([81.5, 23.1])[1]} className="map-country" textAnchor="middle">INDIA</text>
+            <text x={project([67.3, 12.9])[0]} y={project([67.3, 12.9])[1]} textAnchor="middle" className="map-sea-label">Arabian Sea</text>
+            <text x={project([88.5, 14.3])[0]} y={project([88.5, 14.3])[1]} textAnchor="middle" className="map-sea-label">Bay of Bengal</text>
+            {showLabels && LOCAL_PLACES.map(({ name, point }) => {
+              const [x, y] = project([point[0], point[1]]);
+              return <g key={name}><circle cx={x} cy={y} r="1.8" fill="currentColor" />
+                <text x={x + 6} y={y + 3} className="map-city">{name}</text></g>;
+            })}
           </g>
         )}
-
-        {/* 2. Coordinate Grid Lines (Only in Advanced View or subtle in standard) */}
-        <g opacity={isAdvancedView ? "0.35" : "0.15"} pointerEvents="none" className="font-mono text-[9px]">
-          {[23.08, 23.14, 23.20, 23.26].map((lat) => {
-            const [, y] = project(BASIN_BBOX.minLng, lat);
-            return (
-              <g key={`lat-${lat}`}>
-                <line x1="0" y1={y} x2={viewBox.width} y2={y} stroke="rgba(255,255,255,0.12)" strokeDasharray="2 4" />
-                <text x="8" y={y - 3} fill="#94A3B8" className="tabular-nums font-mono text-[9px]">
-                  {lat.toFixed(2)}°N
-                </text>
-              </g>
-            );
-          })}
-          {[77.02, 77.10, 77.20, 77.30, 77.40].map((lng) => {
-            const [x] = project(lng, BASIN_BBOX.minLat);
-            return (
-              <g key={`lng-${lng}`}>
-                <line x1={x} y1="0" x2={x} y2={viewBox.height} stroke="rgba(255,255,255,0.12)" strokeDasharray="2 4" />
-                <text x={x + 3} y={viewBox.height - 8} fill="#94A3B8" className="tabular-nums font-mono text-[9px]">
-                  {lng.toFixed(2)}°E
-                </text>
-              </g>
-            );
-          })}
-        </g>
-
-        {/* 3. LAYER: Rain Polygons */}
-        {activeLayers.mosdac_rain &&
-          featureList
-            .filter((f) => f.properties.layer === "mosdac_rain")
-            .map((f) => {
-              const pathStr = polygonToPath(f.geometry.coordinates);
-              const isBreached = (f.properties.rainfall_mm_hr || 0) >= 15.0;
-              const isSelected = selectedItem?.id === f.id;
-
-              return (
-                <g
-                  key={f.id || "mosdac-rain"}
-                  className="cursor-pointer transition-opacity"
-                  onClick={() => handleFeatureClick(f)}
-                  onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <path
-                    d={pathStr}
-                    fill="url(#rain-diag)"
-                    stroke={isBreached ? "#EF4444" : "#38BDF8"}
-                    strokeWidth={isSelected ? 3.0 : 1.5}
-                    strokeDasharray={isBreached ? "5 3" : undefined}
-                  />
-                  <path
-                    d={pathStr}
-                    fill={isBreached ? "rgba(239, 68, 68, 0.22)" : "rgba(56, 189, 248, 0.10)"}
-                  />
-                </g>
-              );
-            })}
-
-        {/* 4. LAYER: Flooded Areas (Prominent Red Inundation Zone) */}
-        {activeLayers.bhoonidhi_flood &&
-          featureList
-            .filter((f) => f.properties.layer === "bhoonidhi_flood")
-            .map((f) => {
-              const pathStr = polygonToPath(f.geometry.coordinates);
-              const isSelected = selectedItem?.id === f.id;
-
-              return (
-                <g
-                  key={f.id || "bhoonidhi-flood"}
-                  className="cursor-pointer"
-                  onClick={() => handleFeatureClick(f)}
-                  onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <path
-                    d={pathStr}
-                    fill="rgba(239, 68, 68, 0.38)"
-                    stroke="#EF4444"
-                    strokeWidth={isSelected ? 3.2 : 2.0}
-                  />
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="#FFFFFF"
-                    strokeWidth="0.8"
-                    strokeDasharray="4 2"
-                    opacity="0.6"
-                  />
-                </g>
-              );
-            })}
-
-        {/* 5. LAYER: Road Network (Green Open vs Red Blocked) */}
-        {activeLayers.vedas_roads &&
-          featureList
-            .filter((f) => f.properties.layer === "vedas_roads")
-            .map((f) => {
-              const pathStr = lineToPath(f.geometry.coordinates);
-              const isSubmerged = f.properties.road_status === "SUBMERGED";
-              const isSelected = selectedItem?.id === f.id;
-
-              return (
-                <g
-                  key={f.id || "vedas-road"}
-                  className="cursor-pointer"
-                  onClick={() => handleFeatureClick(f)}
-                  onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke={isSubmerged ? "#EF4444" : "#475569"}
-                    strokeWidth={isSelected ? 5.0 : isSubmerged ? 4.0 : 2.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {isSubmerged && (
-                    <path
-                      d={pathStr}
-                      fill="none"
-                      stroke="#FFFFFF"
-                      strokeWidth="1.2"
-                      strokeDasharray="3 3"
-                    />
-                  )}
-                </g>
-              );
-            })}
-
-        {/* 6. LAYER: Safe Evacuation Roads (>510m AMSL Safe High Ground) */}
-        {activeLayers.vedas_corridors &&
-          featureList
-            .filter((f) => f.properties.layer === "vedas_corridors")
-            .map((f) => {
-              const pathStr = lineToPath(f.geometry.coordinates);
-              const isSelected = selectedItem?.id === f.id;
-
-              return (
-                <g
-                  key={f.id || "vedas-corridor"}
-                  className="cursor-pointer"
-                  onClick={() => handleFeatureClick(f)}
-                  onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  {/* Glowing Safe Green Highway */}
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="#10B981"
-                    strokeWidth={isSelected ? 7.0 : 5.0}
-                    strokeOpacity="0.45"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="#34D399"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                </g>
-              );
-            })}
-
-        {/* 7. LAYER: Shelters & Relief Camps (Hospitals, Relief Camps) */}
-        {activeLayers.bhuvan_assets &&
-          featureList
-            .filter((f) => f.properties.layer === "bhuvan_assets")
-            .map((f) => {
-              const [px, py] = project(f.geometry.coordinates[0], f.geometry.coordinates[1]);
-              const isShelter = f.properties.asset_type === "SHELTER";
-              const isSelected = selectedItem?.id === f.id;
-
-              return (
-                <g
-                  key={f.id || "bhuvan-asset"}
-                  transform={`translate(${px}, ${py})`}
-                  className="cursor-pointer"
-                  onClick={() => handleFeatureClick(f)}
-                  onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <circle
-                    r={isSelected ? 10 : 8}
-                    fill={isShelter ? "#10B981" : "#A78BFA"}
-                    stroke="#FFFFFF"
-                    strokeWidth="1.8"
-                    className="shadow-sm"
-                  />
-                  <text
-                    x="12"
-                    y="3"
-                    fill="#F1F5F9"
-                    fontSize="9"
-                    fontWeight="bold"
-                    className="pointer-events-none font-sans drop-shadow"
-                  >
-                    {f.properties.title?.split("(")[0]}
-                  </text>
-                </g>
-              );
-            })}
-
-        {/* 8. LAYER: Active SOS Help Signals */}
-        {activeLayers.sos_mesh &&
-          sosPackets.map((sos) => {
-            const [px, py] = project(sos.position.lng, sos.position.lat);
-            const isCrit = sos.triage.severity === "CRITICAL";
-            const isSelected = selectedItem?.sos_id === sos.sos_id;
-
-            return (
-              <g
-                key={sos.sos_id}
-                transform={`translate(${px}, ${py})`}
-                className="cursor-pointer"
-                onClick={() => handleFeatureClick(sos)}
-                onMouseEnter={(e) => setHoveredItem({ item: sos, x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => setHoveredItem(null)}
-              >
-                <circle r="14" fill={isCrit ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"} className="animate-ping" />
-                <circle r={isSelected ? 9 : 7} fill={isCrit ? "#EF4444" : "#F59E0B"} stroke="#FFFFFF" strokeWidth="2" />
-                <text
-                  x="12"
-                  y="3"
-                  fill={isCrit ? "#FCA5A5" : "#FDE68A"}
-                  fontSize="9"
-                  fontWeight="bold"
-                  className="pointer-events-none font-sans drop-shadow"
-                >
-                  SOS: {sos.triage.headcount} people
-                </text>
-              </g>
-            );
-          })}
-
-        {/* 9. Prominent Epicenter Alert Pin & Friendly Callout Card matching screenshot */}
-        <g transform={`translate(${epicenterX}, ${epicenterY})`} className="cursor-pointer" onClick={() => {
-          const flood = featureList.find((f) => f.properties.layer === "bhoonidhi_flood") || featureList[0];
-          handleFeatureClick(flood);
-        }}>
-          {/* Animated concentric ripple */}
-          <circle r="24" fill="none" stroke="#EF4444" strokeWidth="1.5" className="animate-ping" opacity="0.5" />
-
-          {/* Red Alert Circle with Exclamation */}
-          <circle r="11" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2" className="shadow-lg" />
-          <polygon points="-4.5,4.5 4.5,4.5 0,-4.5" fill="#FFFFFF" />
-          <text x="0" y="3.5" fill="#EF4444" fontSize="7" fontWeight="bold" textAnchor="middle">!</text>
-
-          {/* Blue Pin next to it */}
-          <g transform="translate(14, 2)">
-            <circle r="7" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="2" className="shadow-md" />
-            <circle r="2.5" fill="#FFFFFF" />
-          </g>
-
-          {/* Floating Dark Alert Card Callout */}
-          <g transform="translate(18, -48)">
-            <rect
-              x="0"
-              y="0"
-              width="128"
-              height="42"
-              rx="8"
-              fill="#0F172A"
-              stroke="#1E293B"
-              strokeWidth="1.5"
-              className="shadow-2xl"
-              opacity="0.95"
-            />
-            {/* Pointer stem */}
-            <polygon points="-6,26 0,21 0,31" fill="#0F172A" stroke="#1E293B" strokeWidth="1" />
-            {/* Red Alert Icon in Callout */}
-            <g transform="translate(10, 15)">
-              <polygon points="0,11 12,11 6,1" fill="#EF4444" />
-              <text x="6" y="9.5" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">!</text>
-            </g>
-            {/* Clean Non-Tech Text Labels matching reference screenshot */}
-            <text x="28" y="18" fill="#FFFFFF" fontSize="11" fontWeight="bold" fontFamily="sans-serif">
-              Flood Alert
-            </text>
-            <text x="28" y="31" fill="#94A3B8" fontSize="9" fontWeight="medium" fontFamily="sans-serif">
-              High Severity
-            </text>
-          </g>
-        </g>
+        <rect width={size.width} height={size.height} fill="url(#map-vignette)" pointerEvents="none" />
+        {visible.filter(drawFeature).map((feature, index) => {
+          const d = geometryPath(feature.geometry, project);
+          if (!d) return null;
+          const color = mapColor(feature.properties);
+          const isLine = feature.geometry.type === "LineString";
+          const interactive = onSelect ? () => onSelect(feature) : undefined;
+          return <g key={feature.id ?? index} data-map-action="" className={interactive ? "map-feature" : undefined}
+            role={interactive ? "button" : undefined} tabIndex={interactive ? 0 : undefined}
+            aria-label={feature.properties.title} onClick={interactive}
+            onKeyDown={interactive ? (event) => activate(event, interactive) : undefined}>
+            <title>{feature.properties.title}</title>
+            {isLine && <path d={d} stroke="transparent" strokeWidth="15" fill="none" />}
+            <path d={d} fillRule="evenodd" fill={isLine ? "none" : color} fillOpacity={.23}
+              stroke={color} strokeWidth={isLine ? 3 : 1.4} strokeOpacity={isLine ? 1 : .78}
+              strokeLinecap="round" strokeDasharray={feature.properties.road_status === "CORRIDOR" ? "7 5" : undefined} />
+          </g>;
+        })}
+        {!national && routes.map((dispatch) => <path key={dispatch.dispatch_id}
+          d={geometryPath(dispatch.evacuation_corridor, project)} fill="none" stroke={ROUTE_COLOR}
+          strokeWidth="3" strokeDasharray="6 5" strokeOpacity=".9" pointerEvents="none" />)}
+        {markers.map(({ id, label, point, color, shape, pulse, select, offset }) => {
+          const [px, py] = project(point);
+          const x = px + (offset?.[0] ?? 0);
+          const y = py + (offset?.[1] ?? 0);
+          const anchor = REGION_LABEL_ANCHORS[id] ?? "middle";
+          const labelX = anchor === "end" ? -8 : anchor === "start" ? 8 : 0;
+          if (x < -42 || x > size.width + 42 || y < -42 || y > size.height + 42) return null;
+          return <g key={id} transform={`translate(${x},${y})`} data-map-action=""
+            className={select ? "map-feature" : undefined} role={select ? "button" : undefined}
+            tabIndex={select ? 0 : undefined} aria-label={label} onClick={select}
+            onKeyDown={select ? (event) => activate(event, select) : undefined}>
+            <title>{label}</title>
+            <circle r="14" fill="transparent" />
+            {pulse && <circle r={national ? "15" : "13"} fill={color} opacity=".22" />}
+            <circle r={national ? "7" : "6"} fill={color} fillOpacity=".94" stroke="#0B1220" strokeWidth="2" />
+            {shape === "asset" && <path d="M-2.7 0 H2.7 M0 -2.7 V2.7" stroke="#15132a" strokeWidth="1.6" />}
+            {shape === "sos" && <path d="M0 -2.7 V.6 M0 2.5 v.3" stroke="#441019" strokeWidth="1.7" strokeLinecap="round" />}
+            {(national && size.width > 480 && shape !== "sos" || id === "location") && (
+              <text x={labelX} y={-13} textAnchor={anchor} className="map-marker-label">{label}</text>
+            )}
+          </g>;
+        })}
       </svg>
-
-      {/* Floating Hover Tooltip (Friendly Everyday English) */}
-      {hoveredItem && (
-        <div
-          className="pointer-events-none fixed z-50 bg-[#0F172A] border border-[#1E293B] rounded-lg px-2.5 py-1.5 shadow-xl text-xs font-sans text-white transform -translate-x-1/2 -translate-y-12 animate-fadeIn"
-          style={{ left: hoveredItem.x, top: hoveredItem.y }}
-        >
-          <div className="font-bold text-[11px] text-white">
-            {hoveredItem.item.sos_id
-              ? `SOS Help Signal: ${hoveredItem.item.triage?.headcount} people trapped`
-              : hoveredItem.item.properties?.title}
-          </div>
-          <div className="text-[10px] text-slate-300">
-            {hoveredItem.item.sos_id
-              ? `Needs: ${hoveredItem.item.triage?.needs?.join(", ")}`
-              : hoveredItem.item.properties?.road_status === "SUBMERGED"
-              ? "🔴 Road Blocked: Underwater"
-              : hoveredItem.item.properties?.road_status === "CORRIDOR"
-              ? "🟢 Safe Evacuation Highway (Dry & Open)"
-              : hoveredItem.item.properties?.asset_type === "SHELTER"
-              ? "🏥 Safe Relief Camp (Food & Beds)"
-              : "Click to see details & safety actions"}
-          </div>
-        </div>
-      )}
-
-      {/* Top Right: Satellite / Map Mode Toggle matching screenshot */}
-      <div className="absolute top-3.5 right-3.5 z-20 flex items-center bg-[#0B1322]/90 p-1 rounded-xl border border-[#1E293B] shadow-lg text-xs font-medium backdrop-blur-md">
-        <button
-          onClick={() => setMapViewMode("satellite")}
-          className={`px-3.5 py-1 rounded-lg transition text-xs ${
-            mapViewMode === "satellite"
-              ? "bg-blue-600 text-white font-semibold shadow-sm"
-              : "text-slate-400 hover:text-white"
-          }`}
-        >
-          Satellite
-        </button>
-        <button
-          onClick={() => setMapViewMode("map")}
-          className={`px-3.5 py-1 rounded-lg transition text-xs ${
-            mapViewMode === "map"
-              ? "bg-blue-600 text-white font-semibold shadow-sm"
-              : "text-slate-400 hover:text-white"
-          }`}
-        >
-          Map
-        </button>
+      <div ref={googleHost} aria-hidden={!usingGoogle}
+        className={`google-map ${usingGoogle ? "google-map-visible" : ""}`} />
+      <div className="map-source"><Radar size={14} aria-hidden /> {googleBadge}</div>
+      <div className="map-types" role="group" aria-label="Map view">
+        {MODES.map(({ key, label }) => <button key={key} type="button" aria-pressed={mapStyle === key}
+          onClick={() => setMapStyle(key)}>{label}</button>)}
       </div>
-
-      {/* Top Left: Floating Vertical Zoom & Navigation Controls */}
-      <div className="absolute top-3 left-3 z-20 flex flex-col bg-[#0F172A]/90 p-1 rounded-xl border border-[#1E293B] shadow-lg text-slate-300 backdrop-blur-md">
-        <button
-          onClick={() => setZoom((z) => Math.min(z + 0.25, 3.0))}
-          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
-          title="Zoom In"
-          aria-label="Zoom In"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setZoom((z) => Math.max(z - 0.25, 0.75))}
-          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
-          title="Zoom Out"
-          aria-label="Zoom Out"
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <div className="h-px bg-[#1E293B] my-0.5" />
-        <button
-          onClick={resetView}
-          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
-          title="Center Map on Affected Region"
-          aria-label="Recenter"
-        >
-          <Crosshair className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => onToggleLayer("bhoonidhi_flood")}
-          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
-          title="Toggle Flood Water On/Off"
-          aria-label="Toggle Flood Water"
-        >
-          <Layers className="w-4 h-4" />
-        </button>
+      <div className="map-controls" aria-label="Map controls">
+        <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoom(1)}><Plus size={17} /></button>
+        <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoom(-1)}><Minus size={17} /></button>
+        <button type="button" aria-label="Recenter map" title="Recenter map" onClick={recenter}><Crosshair size={16} /></button>
+        {onLayers && <button type="button" aria-label="Map layers" title="Map layers" onClick={onLayers}><Layers3 size={16} /></button>}
       </div>
-
-      {/* Bottom Left: Scale Bar (10 km) matching screenshot */}
-      <div className="absolute bottom-3.5 left-3.5 z-10 flex items-center space-x-2 bg-[#0B1322]/85 px-2.5 py-1 rounded-lg border border-[#1E293B] text-[10px] text-slate-300 font-sans backdrop-blur-md">
-        <span>10 km</span>
-        <div className="w-8 h-0.5 bg-white/90 rounded-full" />
-      </div>
+      {!usingGoogle && <div className="map-scale" aria-label={`Map scale ${scaleKm} kilometers`}>
+        <span style={{ width: scaleKm / kmPerPixel }} /> <span>{scaleKm} km</span>
+      </div>}
+      {!usingGoogle && <div className="map-credit">{mapStyle === "roadmap" ? "Natural Earth" : "NASA Blue Marble · Natural Earth"}</div>}
     </div>
   );
 }
-
-export default CommandMap;

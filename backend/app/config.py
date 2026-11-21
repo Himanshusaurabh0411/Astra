@@ -1,91 +1,115 @@
-import os
+from math import isfinite
 from pathlib import Path
-from typing import Optional
+from typing import Literal
+
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+APP_DIR = Path(__file__).resolve().parent
+ROOT_DIR = APP_DIR.parent.parent
+DATA_DIR = APP_DIR / "data"
 
 
 class Settings(BaseSettings):
-    """
-    TerraPulse typed configuration settings.
-    Supports environment variable overrides, .env loading, and robust path resolution.
-    """
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(ROOT_DIR / ".env", APP_DIR.parent / ".env"),
         env_file_encoding="utf-8",
-        extra="allow"
+        extra="ignore",
     )
 
-    APP_NAME: str = "TerraPulse Space-to-Ground Geospatial Engine"
+    APP_NAME: str = "TerraPulse"
     VERSION: str = "1.0.0"
     APP_ENV: str = "development"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"
+    RAINFALL_THRESHOLD_MM_HR: float = Field(default=15.0, gt=0, lt=250)
+    MAX_VECTOR_PAYLOAD_KB: float = Field(default=100.0, ge=10, le=100)
+    INDIA_BBOX: str = "68.0,6.5,97.5,37.5"
+    DEFAULT_SCENARIO_MODE: Literal["NORMAL", "CELL_BLACKOUT_MESH_ACTIVE", "BACKHAUL_SYNC"] = "NORMAL"
 
-    # Operational & Early-Warning Thresholds
-    RAINFALL_THRESHOLD_MM_HR: float = 15.0
-    MAX_VECTOR_PAYLOAD_KB: float = 100.0
-    DEFAULT_SCENARIO_MODE: str = "NORMAL"
+    SEED_DATA_PATH: str | None = None
+    CONTRACTS_DIR: str | None = None
+    PORTAL_FETCH_TIMEOUT_SECONDS: float = Field(default=3.0, gt=0, le=15)
+    PORTAL_MAX_RESPONSE_BYTES: int = Field(default=5_000_000, ge=1024, le=25_000_000)
 
-    # Paths (relative to runtime or explicit overrides)
-    SEED_DATA_PATH: Optional[str] = None
-    CONTRACTS_DIR: Optional[str] = None
+    MOSDAC_API_URL: str | None = None
+    MOSDAC_API_TOKEN: SecretStr | None = None
+    MOSDAC_SAMPLE_PATH: str | None = None
+    VEDAS_API_URL: str | None = None
+    VEDAS_API_TOKEN: SecretStr | None = None
+    VEDAS_SAMPLE_PATH: str | None = None
+    VEDAS_AGRI_SAMPLE_PATH: str | None = None
+    BHOONIDHI_API_URL: str | None = None
+    BHOONIDHI_API_TOKEN: SecretStr | None = None
+    BHOONIDHI_SAMPLE_PATH: str | None = None
+    BHUVAN_WFS_URL: str | None = None
+    BHUVAN_API_TOKEN: SecretStr | None = None
+    BHUVAN_SAMPLE_PATH: str | None = None
+    BHUVAN_LULC_SAMPLE_PATH: str | None = None
 
-    # Tactical Mesh Radio Parameters (India ISM 865–867 MHz)
-    LORA_FREQUENCY_MHZ: float = 865.2
-    LORA_BANDWIDTH_KHZ: float = 125.0
-    MAX_MESH_HOPS: int = 7
+    LORA_FREQUENCY_MHZ: float = Field(default=865.2, ge=865, le=867)
+    LORA_BANDWIDTH_KHZ: float = Field(default=125.0, gt=0)
+    MAX_MESH_HOPS: int = Field(default=7, ge=1, le=15)
     NAVIC_ENABLED: bool = True
 
+    @field_validator("INDIA_BBOX")
+    @classmethod
+    def validate_india_bbox(cls, value: str) -> str:
+        parse_bbox(value)
+        return value
+
+    @property
+    def india_bbox(self) -> tuple[float, float, float, float]:
+        return parse_bbox(self.INDIA_BBOX)
+
     def resolve_seed_data_path(self) -> Path:
-        """
-        Locates the seed_catchment.geojson file dynamically across local,
-        Docker container, and repository directory structures.
-        """
-        candidates = []
-        if self.SEED_DATA_PATH:
-            candidates.append(Path(self.SEED_DATA_PATH))
-            candidates.append(Path.cwd() / self.SEED_DATA_PATH)
-
-        # File-relative paths
-        app_dir = Path(__file__).resolve().parent
-        candidates.extend([
-            app_dir / "data" / "seed_catchment.geojson",
-            app_dir.parent / "app" / "data" / "seed_catchment.geojson",
-            Path.cwd() / "backend" / "app" / "data" / "seed_catchment.geojson",
-            Path.cwd() / "app" / "data" / "seed_catchment.geojson",
-            Path.cwd() / "terrapulse" / "backend" / "app" / "data" / "seed_catchment.geojson",
-            Path.cwd() / "data" / "seed_catchment.geojson",
-        ])
-
-        for path in candidates:
-            if path.exists() and path.is_file():
-                return path.resolve()
-
-        # Fallback to the first canonical target even if not yet created
-        return (app_dir / "data" / "seed_catchment.geojson").resolve()
+        return self._resolve_path(self.SEED_DATA_PATH, DATA_DIR / "seed_catchment.geojson")
 
     def resolve_contracts_dir(self) -> Path:
-        """
-        Locates the contracts directory containing JSON schemas.
-        """
-        candidates = []
-        if self.CONTRACTS_DIR:
-            candidates.append(Path(self.CONTRACTS_DIR))
-            candidates.append(Path.cwd() / self.CONTRACTS_DIR)
+        return self._resolve_path(self.CONTRACTS_DIR, ROOT_DIR / "contracts")
 
-        app_dir = Path(__file__).resolve().parent
-        candidates.extend([
-            app_dir.parent.parent / "contracts",
-            Path.cwd() / "contracts",
-            Path.cwd() / "terrapulse" / "contracts",
-            app_dir.parent / "contracts",
-        ])
+    def resolve_mosdac_sample_path(self) -> Path:
+        return self._sample_path("mosdac", self.MOSDAC_SAMPLE_PATH, "insat3ds_rainfall_hourly.json")
 
-        for path in candidates:
-            if path.exists() and path.is_dir():
-                return path.resolve()
+    def resolve_vedas_sample_path(self) -> Path:
+        return self._sample_path("vedas", self.VEDAS_SAMPLE_PATH, "cartosat_dem_roads_profile.json")
 
-        return (app_dir.parent.parent / "contracts").resolve()
+    def resolve_vedas_agri_sample_path(self) -> Path:
+        return self._sample_path("vedas", self.VEDAS_AGRI_SAMPLE_PATH, "vedas_crop_phenology_sehore.json")
+
+    def resolve_bhoonidhi_sample_path(self) -> Path:
+        return self._sample_path("bhoonidhi", self.BHOONIDHI_SAMPLE_PATH, "eos04_sar_flood_stac.json")
+
+    def resolve_bhuvan_sample_path(self) -> Path:
+        return self._sample_path("bhuvan", self.BHUVAN_SAMPLE_PATH, "bhuvan_critical_infrastructure.geojson")
+
+    def resolve_bhuvan_lulc_sample_path(self) -> Path:
+        return self._sample_path("bhuvan", self.BHUVAN_LULC_SAMPLE_PATH, "bhuvan_lulc_waterbodies.json")
+
+    def _sample_path(self, portal: str, configured: str | None, filename: str) -> Path:
+        return self._resolve_path(configured, DATA_DIR / "real_samples" / portal / filename)
+
+    @staticmethod
+    def _resolve_path(configured: str | None, default: Path) -> Path:
+        if not configured:
+            return default
+        path = Path(configured)
+        if path.is_absolute() or path.exists():
+            return path.resolve()
+        return (APP_DIR.parent / path).resolve()
+
+
+def parse_bbox(value: str) -> tuple[float, float, float, float]:
+    try:
+        west, south, east, north = (float(part.strip()) for part in value.split(","))
+    except ValueError as exc:
+        raise ValueError("Use west,south,east,north for the map bounds.") from exc
+    if not all(isfinite(n) for n in (west, south, east, north)) or not (
+        -180 <= west < east <= 180 and -90 <= south < north <= 90
+    ):
+        raise ValueError("Map bounds must be ordered longitude and latitude values.")
+    return west, south, east, north
 
 
 settings = Settings()

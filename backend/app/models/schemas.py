@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Annotated, Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 # ==============================================================================
@@ -64,6 +64,8 @@ class NavicBand(str, Enum):
     L5 = "L5"
     S_BAND = "S_BAND"
     L5_S_DUAL = "L5_S_DUAL"
+    L5_S_PASSIVE = "L5+S_PASSIVE"
+    DEVICE_GPS = "DEVICE_GPS"
     ESTIMATED_MESH = "ESTIMATED_MESH"
 
 
@@ -86,6 +88,24 @@ class MeshSyncStatus(str, Enum):
 # GeoJSON Feature Collection Models (geojson_feature.schema.json)
 # ==============================================================================
 
+class LayerProvenance(BaseModel):
+    """Provenance tracking per authoritative ISRO spatial layer."""
+    model_config = ConfigDict(extra="allow")
+
+    source_portal: str  # "MOSDAC", "Bhoonidhi", "VEDAS", "Bhuvan"
+    ingestion_mode: str = "seed_fallback"  # "live_portal", "local_sample", "seed_fallback", "simulation_spike"
+    sensor: Optional[str] = None
+    status: str = "SYNCHRONIZED"
+    features_count: int = 0
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class PortalProvenance(BaseModel):
+    source_type: Literal["live_portal", "local_sample", "seed_fallback"]
+    records_ingested: int = Field(ge=0)
+    last_synced_at: str
+
+
 class GeoJsonMetadata(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -96,6 +116,11 @@ class GeoJsonMetadata(BaseModel):
     rainfall_threshold_mm_hr: float = 15.0
     basin_name: Optional[str] = "Kothri Kalan / Sehore / Bhopal Basin (Madhya Pradesh)"
     bounding_box: Optional[List[float]] = [77.01, 23.07, 77.43, 23.27]
+    layer_provenance: Optional[Dict[str, LayerProvenance]] = None
+    portal_provenance: Optional[Dict[str, PortalProvenance]] = None
+    region_id: str = "all-india"
+    total_records: int | None = None
+    truncated: bool = False
 
 
 class GeoJsonGeometry(BaseModel):
@@ -121,6 +146,23 @@ class GeoJsonFeatureProperties(BaseModel):
     elevation_m: Optional[float] = None
     capacity: Optional[int] = None
     sensor: Optional[str] = None
+    data_source_origin: Optional[str] = None
+    source_portal: Optional[str] = None
+    region_id: Optional[str] = None
+    place_name: Optional[str] = None
+    observed_at: Optional[str] = None
+    area_km2: Optional[float] = Field(default=None, ge=0)
+    water_detected: Optional[bool] = None
+    soil_moisture_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    wind_km_hr: Optional[float] = Field(default=None, ge=0)
+    storage_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    capacity_mcm: Optional[float] = Field(default=None, ge=0)
+    crop_stress_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    record_kind: Optional[str] = None
+    boundary_type: Optional[str] = None
+    land_use: Optional[str] = None
+    clearance_m: Optional[float] = Field(default=None, ge=0)
+    slope_pct: Optional[float] = Field(default=None, ge=0)
 
 
 class GeoJsonFeature(BaseModel):
@@ -147,34 +189,40 @@ class GeoJsonFeatureCollection(BaseModel):
 class PositionModel(BaseModel):
     lat: float = Field(ge=-90.0, le=90.0)
     lng: float = Field(ge=-180.0, le=180.0)
-    accuracy_m: float = 5.0
+    accuracy_m: float = Field(default=5.0, gt=0, le=100_000)
     navic_band: NavicBand = NavicBand.L5
 
 
 class TriageModel(BaseModel):
     severity: HazardSeverity = HazardSeverity.MODERATE
-    headcount: int = Field(ge=1, default=1)
-    needs: List[str] = Field(default_factory=list)
-    note: Optional[str] = None
+    headcount: int = Field(ge=1, le=10_000, default=1)
+    needs: list[Annotated[str, Field(min_length=1, max_length=32)]] = Field(default_factory=list, max_length=10)
+    note: Optional[str] = Field(default=None, max_length=240)
 
 
 class MeshModel(BaseModel):
     transport: MeshTransport = MeshTransport.LORA_865
     hop_count: int = Field(ge=0, le=15, default=0)
     max_hops: int = Field(ge=1, le=15, default=7)
-    relay_path: List[str] = Field(default_factory=list)
+    relay_path: list[Annotated[str, Field(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=16)
     sync_status: MeshSyncStatus = MeshSyncStatus.QUEUED_OFFLINE
 
 
 class SOSPacket(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
     sos_id: str = Field(pattern=r"^SOS-[A-Z0-9_-]{4,20}$")
-    device_id: str
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    device_id: str = Field(min_length=1, max_length=64)
+    timestamp: str = Field(max_length=40, default_factory=lambda: datetime.now(timezone.utc).isoformat())
     position: PositionModel
     triage: TriageModel
     mesh: MeshModel
+
+    @model_validator(mode="after")
+    def validate_hops(self) -> "SOSPacket":
+        if self.mesh.hop_count > self.mesh.max_hops:
+            raise ValueError("hop_count must be at most max_hops")
+        return self
 
 
 # ==============================================================================
@@ -218,6 +266,11 @@ class StateSummaryKPIs(BaseModel):
     lora_mesh_active: bool = False
     max_rainfall_mm_hr: float = 0.0
     max_water_depth_m: float = 0.0
+    heavy_rain_alerts: int = 0
+    flooded_area_km2: float = 0.0
+    people_at_risk: int = 0
+    active_alerts: int = 0
+    active_mesh_relays: int = 0
 
 
 class TerraPulseStateResponse(BaseModel):

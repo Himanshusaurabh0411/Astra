@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "audit": "./scripts/security-check.sh"
+    "audit": "python scripts/security_audit.py"
   },
   "dependencies": {
     "clsx": "^2.1.1",

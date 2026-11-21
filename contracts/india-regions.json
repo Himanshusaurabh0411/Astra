@@ -1,0 +1,176 @@
+{
+  "regions": [
+    {
+      "id": "all-india",
+      "name": "All India",
+      "short_name": "All India",
+      "basin": "National overview",
+      "center": [78.96,22.59],
+      "bbox": [68,6.5,97.5,37.5],
+      "zoom": 4,
+      "risk": "Regional monitoring",
+      "hazard": "Heavy rain, flooding, landslides and drought",
+      "places": [
+        {"name": "New Delhi", "state": "Delhi", "center": [77.209,28.614], "aliases": ["Delhi", "NCR"]},
+        {"name": "Jaipur", "state": "Rajasthan", "center": [75.787,26.912], "aliases": []},
+        {"name": "Ahmedabad", "state": "Gujarat", "center": [72.571,23.023], "aliases": []},
+        {"name": "Gandhinagar", "state": "Gujarat", "center": [72.636,23.215], "aliases": []},
+        {"name": "Lucknow", "state": "Uttar Pradesh", "center": [80.946,26.847], "aliases": []},
+        {"name": "Varanasi", "state": "Uttar Pradesh", "center": [82.974,25.317], "aliases": ["Banaras", "Kashi"]},
+        {"name": "Kolkata", "state": "West Bengal", "center": [88.364,22.573], "aliases": ["Calcutta"]},
+        {"name": "Chennai", "state": "Tamil Nadu", "center": [80.271,13.083], "aliases": ["Madras"]},
+        {"name": "Bengaluru", "state": "Karnataka", "center": [77.595,12.972], "aliases": ["Bangalore"]},
+        {"name": "Hyderabad", "state": "Telangana", "center": [78.487,17.385], "aliases": []},
+        {"name": "Pune", "state": "Maharashtra", "center": [73.857,18.52], "aliases": []},
+        {"name": "Raipur", "state": "Chhattisgarh", "center": [81.63,21.251], "aliases": []},
+        {"name": "Ranchi", "state": "Jharkhand", "center": [85.31,23.344], "aliases": []},
+        {"name": "Dehradun", "state": "Uttarakhand", "center": [78.032,30.317], "aliases": []},
+        {"name": "Shimla", "state": "Himachal Pradesh", "center": [77.174,31.104], "aliases": []},
+        {"name": "Srinagar", "state": "Jammu and Kashmir", "center": [74.797,34.084], "aliases": ["Kashmir"]},
+        {"name": "Jammu", "state": "Jammu and Kashmir", "center": [74.857,32.726], "aliases": []},
+        {"name": "Leh", "state": "Ladakh", "center": [77.577,34.153], "aliases": []},
+        {"name": "Chandigarh", "state": "Chandigarh", "center": [76.779,30.734], "aliases": ["Punjab", "Haryana"]},
+        {"name": "Amritsar", "state": "Punjab", "center": [74.872,31.634], "aliases": []},
+        {"name": "Panaji", "state": "Goa", "center": [73.828,15.49], "aliases": []},
+        {"name": "Thiruvananthapuram", "state": "Kerala", "center": [76.936,8.524], "aliases": ["Trivandrum"]},
+        {"name": "Shillong", "state": "Meghalaya", "center": [91.893,25.578], "aliases": []},
+        {"name": "Dispur", "state": "Assam", "center": [91.789,26.143], "aliases": []},
+        {"name": "Itanagar", "state": "Arunachal Pradesh", "center": [93.605,27.084], "aliases": []},
+        {"name": "Imphal", "state": "Manipur", "center": [93.937,24.817], "aliases": []},
+        {"name": "Kohima", "state": "Nagaland", "center": [94.109,25.658], "aliases": []},
+        {"name": "Aizawl", "state": "Mizoram", "center": [92.717,23.727], "aliases": []},
+        {"name": "Agartala", "state": "Tripura", "center": [91.286,23.831], "aliases": []},
+        {"name": "Gangtok", "state": "Sikkim", "center": [88.613,27.333], "aliases": []},
+        {"name": "Amaravati", "state": "Andhra Pradesh", "center": [80.516,16.513], "aliases": []},
+        {"name": "Puducherry", "state": "Puducherry", "center": [79.808,11.942], "aliases": ["Pondicherry"]},
+        {"name": "Kavaratti", "state": "Lakshadweep", "center": [72.64,10.56], "aliases": []},
+        {"name": "Sri Vijaya Puram", "state": "Andaman and Nicobar Islands", "center": [92.727,11.624], "aliases": ["Port Blair", "Andaman", "Nicobar"]},
+        {"name": "Daman", "state": "Dadra and Nagar Haveli and Daman and Diu", "center": [72.833,20.397], "aliases": ["Diu", "Silvassa"]},
+        {"name": "Indira Point", "state": "Andaman and Nicobar Islands", "center": [93.839,6.75], "aliases": []},
+        {"name": "Indore", "state": "Madhya Pradesh", "center": [75.858,22.719], "aliases": []},
+        {"name": "Surat", "state": "Gujarat", "center": [72.831,21.17], "aliases": []},
+        {"name": "Siliguri", "state": "West Bengal", "center": [88.396,26.727], "aliases": []}
+      ]
+    },
+    {
+      "id": "central-india",
+      "name": "Central India",
+      "short_name": "Central India",
+      "basin": "Narmada–Betwa Basin",
+      "center": [77.53,22.97],
+      "bbox": [74.5,21.1,80.15,24.7],
+      "zoom": 7,
+      "risk": "Rain watch",
+      "hazard": "Flash floods and low-road crossings",
+      "places": [
+        {"name": "Kothri Kalan", "state": "Madhya Pradesh", "center": [77.058,23.091], "aliases": ["Kothri", "Sevan River"]},
+        {"name": "Sehore", "state": "Madhya Pradesh", "center": [77.086,23.201], "aliases": []},
+        {"name": "Bhopal", "state": "Madhya Pradesh", "center": [77.4126,23.2599], "aliases": []},
+        {"name": "Hoshangabad", "state": "Madhya Pradesh", "center": [77.7277,22.7441], "aliases": ["Narmadapuram"]}
+      ]
+    },
+    {
+      "id": "indo-gangetic",
+      "name": "Indo-Gangetic Floodplain",
+      "short_name": "Indo-Gangetic",
+      "basin": "Kosi–Gandak Basin",
+      "center": [85.61,26.15],
+      "bbox": [82.65,24.4,88.5,27.55],
+      "zoom": 7,
+      "risk": "Flood watch",
+      "hazard": "River flooding across the Kosi and Gandak",
+      "places": [
+        {"name": "Darbhanga", "state": "Bihar", "center": [85.8918,26.1542], "aliases": []},
+        {"name": "Patna", "state": "Bihar", "center": [85.1376,25.5941], "aliases": []},
+        {"name": "Supaul", "state": "Bihar", "center": [86.6114,26.1233], "aliases": []},
+        {"name": "Gorakhpur", "state": "Uttar Pradesh", "center": [83.3732,26.7606], "aliases": []}
+      ]
+    },
+    {
+      "id": "northeast-india",
+      "name": "Northeast India",
+      "short_name": "Northeast",
+      "basin": "Brahmaputra–Barak Valley",
+      "center": [92.5,26.68],
+      "bbox": [89.45,23.3,97.25,28.3],
+      "zoom": 7,
+      "risk": "Flood watch",
+      "hazard": "River flooding and isolated settlements",
+      "places": [
+        {"name": "Guwahati", "state": "Assam", "center": [91.7362,26.1445], "aliases": ["Gauhati"]},
+        {"name": "Dhemaji", "state": "Assam", "center": [94.5819,27.4827], "aliases": []},
+        {"name": "Silchar", "state": "Assam", "center": [92.7789,24.8333], "aliases": []},
+        {"name": "Kaziranga", "state": "Assam", "center": [93.1711,26.5775], "aliases": []}
+      ]
+    },
+    {
+      "id": "east-coast",
+      "name": "East Coast Cyclone Corridor",
+      "short_name": "East Coast",
+      "basin": "Mahanadi–Godavari Delta",
+      "center": [84.82,19.6],
+      "bbox": [80,15.45,88.05,22.7],
+      "zoom": 6,
+      "risk": "Coastal watch",
+      "hazard": "Heavy coastal rain and storm surge",
+      "places": [
+        {"name": "Puri", "state": "Odisha", "center": [85.8315,19.8135], "aliases": []},
+        {"name": "Kendrapara", "state": "Odisha", "center": [86.4224,20.5017], "aliases": []},
+        {"name": "Bhubaneswar", "state": "Odisha", "center": [85.8245,20.2961], "aliases": ["Bhubaneshwar", "Orissa"]},
+        {"name": "Visakhapatnam", "state": "Andhra Pradesh", "center": [83.2185,17.6868], "aliases": ["Vizag"]},
+        {"name": "Kakinada", "state": "Andhra Pradesh", "center": [82.2475,16.9891], "aliases": ["Godavari Delta"]}
+      ]
+    },
+    {
+      "id": "western-ghats",
+      "name": "Western Ghats & West Coast",
+      "short_name": "Western Ghats",
+      "basin": "West Coast Monsoon Zone",
+      "center": [75.25,14.4],
+      "bbox": [72.4,8.05,77.95,20.4],
+      "zoom": 6,
+      "risk": "Monsoon watch",
+      "hazard": "Monsoon flooding and landslide-prone roads",
+      "places": [
+        {"name": "Wayanad", "state": "Kerala", "center": [76.0827,11.605], "aliases": ["Kalpetta"]},
+        {"name": "Alappuzha", "state": "Kerala", "center": [76.3388,9.4981], "aliases": ["Alleppey"]},
+        {"name": "Kochi", "state": "Kerala", "center": [76.2673,9.9312], "aliases": ["Cochin"]},
+        {"name": "Mumbai", "state": "Maharashtra", "center": [72.8777,19.076], "aliases": ["Bombay"]},
+        {"name": "Raigad", "state": "Maharashtra", "center": [73.3614,18.232], "aliases": []}
+      ]
+    },
+    {
+      "id": "himalayan",
+      "name": "Himalayan Glacial Flood & Cloudburst Zone",
+      "short_name": "Himalayan Zone",
+      "basin": "Upper Alaknanda & Teesta Basins",
+      "center": [84.6,29.72],
+      "bbox": [77.4,26.5,89.2,32.05],
+      "zoom": 6,
+      "risk": "Mountain watch",
+      "hazard": "Glacial lake flooding, cloudbursts and rockfalls",
+      "places": [
+        {"name": "Chamoli", "state": "Uttarakhand", "center": [79.3216,30.4004], "aliases": []},
+        {"name": "Rudraprayag", "state": "Uttarakhand", "center": [78.9811,30.2844], "aliases": []},
+        {"name": "Joshimath", "state": "Uttarakhand", "center": [79.5675,30.5546], "aliases": ["Jyotirmath"]},
+        {"name": "Teesta Basin", "state": "Sikkim", "center": [88.4746,27.5344], "aliases": ["Tista", "Teesta River"]}
+      ]
+    },
+    {
+      "id": "arid-belt",
+      "name": "Arid & Agri-Drought Belt",
+      "short_name": "Arid Belt",
+      "basin": "Marathwada, Bundelkhand & Thar",
+      "center": [76.25,23.15],
+      "bbox": [70.9,17,81.1,28.6],
+      "zoom": 6,
+      "risk": "Dry conditions",
+      "hazard": "Crop stress and low reservoir storage",
+      "places": [
+        {"name": "Latur", "state": "Maharashtra", "center": [76.5768,18.4088], "aliases": ["Marathwada"]},
+        {"name": "Bundelkhand", "state": "Uttar Pradesh / Madhya Pradesh", "center": [79.59,25.31], "aliases": ["Jhansi", "Orchha"]},
+        {"name": "Jodhpur", "state": "Rajasthan", "center": [73.0243,26.2389], "aliases": ["Thar"]}
+      ]
+    }
+  ]
+}

@@ -1,30 +1,16 @@
-/**
- * TerraPulse Space-to-Ground Geospatial Client & Real-time Telemetry Service
- * Interfaces with FastAPI backend (port 8000) and WebSocket (/ws/live)
- * Includes local in-memory fallback, IndexedDB caching, and automatic exponential backoff.
- */
-
 import {
-  getCachedFeatures,
-  saveCachedFeatures,
-  getCachedDispatches,
-  saveCachedDispatches,
-  SEEDED_BASIN_FEATURES,
-  SEEDED_DISPATCHES,
-  queueOfflineSOS,
+  getCachedDispatches, getCachedMap, getQueuedOfflineSOS, queueOfflineSOS, removeQueuedSOS,
+  saveCachedDispatches, saveCachedFeatures, SEEDED_BASIN_FEATURES, SEEDED_DISPATCHES,
 } from "./offlineStore";
+import { distanceKm, getRegion, INDIA, inBounds, nearestRegion, REGIONS, type Bounds, type Point, type Region } from "./regions";
 
-// Operational & Tactical Enums
 export type OperationalMode = "NORMAL" | "CELL_BLACKOUT_MESH_ACTIVE" | "BACKHAUL_SYNC";
 export type HazardSeverity = "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
 export type RoadStatus = "OPEN" | "SUBMERGED" | "CORRIDOR" | "NA";
 export type AssetType = "HOSPITAL" | "SCHOOL" | "GRAM_PANCHAYAT" | "SHELTER" | "RESERVOIR" | "NONE";
-export type SpatialLayer =
-  | "mosdac_rain"
-  | "bhoonidhi_flood"
-  | "vedas_roads"
-  | "vedas_corridors"
-  | "bhuvan_assets";
+export type SpatialLayer = "mosdac_rain" | "bhoonidhi_flood" | "vedas_roads" | "vedas_corridors" | "bhuvan_assets";
+export type SourceType = "live_portal" | "local_sample" | "seed_fallback";
+type Connection = "api" | "cache" | "demo";
 
 export interface PositionModel {
   lat: number;
@@ -32,14 +18,12 @@ export interface PositionModel {
   accuracy_m?: number;
   navic_band?: string;
 }
-
 export interface TriageModel {
   severity: HazardSeverity;
   headcount: number;
   needs: string[];
   note?: string;
 }
-
 export interface MeshModel {
   transport: string;
   hop_count: number;
@@ -47,7 +31,6 @@ export interface MeshModel {
   relay_path: string[];
   sync_status: string;
 }
-
 export interface SOSPacket {
   sos_id: string;
   device_id: string;
@@ -56,11 +39,11 @@ export interface SOSPacket {
   triage: TriageModel;
   mesh: MeshModel;
 }
-
-export interface GeoJsonGeometry {
-  type: string;
-  coordinates: any;
-}
+export type GeoJsonGeometry =
+  | { type: "Point"; coordinates: Point }
+  | { type: "LineString"; coordinates: Point[] }
+  | { type: "Polygon"; coordinates: Point[][] }
+  | { type: "MultiPolygon"; coordinates: Point[][][] };
 
 export interface GeoJsonFeatureProperties {
   layer: SpatialLayer;
@@ -76,16 +59,34 @@ export interface GeoJsonFeatureProperties {
   elevation_m?: number;
   capacity?: number;
   sensor?: string;
-  [key: string]: any;
+  region_id?: string;
+  source_portal?: string;
+  data_source_origin?: SourceType | "simulation_spike";
+  place_name?: string;
+  observed_at?: string;
+  area_km2?: number;
+  water_detected?: boolean;
+  wind_km_hr?: number;
+  soil_moisture_pct?: number;
+  storage_pct?: number;
+  capacity_mcm?: number;
+  crop_stress_pct?: number;
+  record_kind?: string;
+  boundary_type?: string;
+  land_use?: string;
+  slope_pct?: number;
 }
-
 export interface GeoJsonFeature {
   type: "Feature";
   id?: string;
   geometry: GeoJsonGeometry;
   properties: GeoJsonFeatureProperties;
 }
-
+export interface PortalProvenance {
+  source_type: SourceType;
+  records_ingested: number;
+  last_synced_at: string;
+}
 export interface GeoJsonFeatureCollection {
   type: "FeatureCollection";
   metadata: {
@@ -96,18 +97,19 @@ export interface GeoJsonFeatureCollection {
     rainfall_threshold_mm_hr?: number;
     basin_name?: string;
     bounding_box?: number[];
-    [key: string]: any;
+    region_id?: string;
+    truncated?: boolean;
+    total_records?: number;
+    portal_provenance?: Record<string, PortalProvenance>;
   };
   features: GeoJsonFeature[];
 }
-
 export interface SafeAsset {
   name: string;
   lat: number;
   lng: number;
   asset_id?: string;
 }
-
 export interface DispatchVector {
   dispatch_id: string;
   issued_at: string;
@@ -117,8 +119,8 @@ export interface DispatchVector {
   evacuation_corridor: GeoJsonGeometry;
   safe_asset: SafeAsset;
   payload_kb: number;
+  saved_locally?: boolean;
 }
-
 export interface StateSummaryKPIs {
   total_features: number;
   active_sos_count: number;
@@ -132,8 +134,12 @@ export interface StateSummaryKPIs {
   lora_mesh_active: boolean;
   max_rainfall_mm_hr: number;
   max_water_depth_m: number;
+  heavy_rain_alerts: number;
+  flooded_area_km2: number;
+  people_at_risk: number;
+  active_alerts: number;
+  active_mesh_relays: number;
 }
-
 export interface TerraPulseStateResponse {
   mode: OperationalMode;
   features: GeoJsonFeatureCollection;
@@ -142,530 +148,446 @@ export interface TerraPulseStateResponse {
   dispatches: DispatchVector[];
   kpis: StateSummaryKPIs;
   last_updated: string;
+  connection?: Connection;
 }
 
-// Configurable Host/Port
-const API_URL =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `http://${window.location.hostname}:8000`
-    : "http://localhost:8000";
-
-const WS_URL =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `ws://${window.location.hostname}:8000/ws/live`
-    : "ws://localhost:8000/ws/live";
-
-// In-Memory Simulated State for Seamless Offline Demonstration
-let localMode: OperationalMode = "NORMAL";
-let localRainfall = 4.8;
-let localWaterDepth = 0.2;
-let localFeatures: GeoJsonFeatureCollection = JSON.parse(JSON.stringify(SEEDED_BASIN_FEATURES));
-let localDispatches: DispatchVector[] = JSON.parse(JSON.stringify(SEEDED_DISPATCHES));
-let localSosPackets: SOSPacket[] = [
-  {
-    sos_id: "SOS-KOTHRI-409B",
-    device_id: "NAVIC-NODE-409B",
-    timestamp: new Date().toISOString(),
-    position: {
-      lat: 23.0910,
-      lng: 77.0580,
-      accuracy_m: 2.5,
-      navic_band: "L5+S_PASSIVE",
-    },
-    triage: {
-      severity: "CRITICAL",
-      headcount: 5,
-      needs: ["EVACUATION", "MEDICAL", "BOAT_RESCUE"],
-      note: "Elderly resident with oxygen cylinder trapped on second floor near Sevan River causeway.",
-    },
-    mesh: {
-      transport: "LORA_865",
-      hop_count: 2,
-      max_hops: 7,
-      relay_path: ["NODE-FIELD-07", "NODE-RIDGE-02", "GATEWAY-CAMP-01"],
-      sync_status: "RELAYED_MESH",
-    },
-  },
-  {
-    sos_id: "SOS-KOTHRI-512A",
-    device_id: "NAVIC-NODE-512A",
-    timestamp: new Date().toISOString(),
-    position: {
-      lat: 23.0840,
-      lng: 77.0320,
-      accuracy_m: 3.0,
-      navic_band: "L5+S_PASSIVE",
-    },
-    triage: {
-      severity: "HIGH",
-      headcount: 3,
-      needs: ["WATER", "FOOD"],
-      note: "Gram Panchayat rooftop shelter muster point; clean drinking water exhausted.",
-    },
-    mesh: {
-      transport: "LORA_865",
-      hop_count: 1,
-      max_hops: 7,
-      relay_path: ["NODE-FIELD-03", "GATEWAY-CAMP-01"],
-      sync_status: "RELAYED_MESH",
-    },
-  },
-];
-
-function computeLocalKPIs(): StateSummaryKPIs {
-  const submergedRoads = localFeatures.features.filter(
-    (f) => f.properties.layer === "vedas_roads" && f.properties.road_status === "SUBMERGED"
-  ).length;
-
-  const openCorridors = localFeatures.features.filter(
-    (f) => f.properties.layer === "vedas_corridors" && f.properties.road_status === "CORRIDOR"
-  ).length;
-
-  const safeShelters = localFeatures.features.filter(
-    (f) =>
-      f.properties.layer === "bhuvan_assets" &&
-      (f.properties.asset_type === "SHELTER" || f.properties.asset_type === "HOSPITAL")
-  ).length;
-
-  const criticalSos = localSosPackets.filter((s) => s.triage.severity === "CRITICAL").length;
-  const isBlackout = localMode === "CELL_BLACKOUT_MESH_ACTIVE";
-
-  return {
-    total_features: localFeatures.features.length,
-    active_sos_count: localSosPackets.length,
-    critical_sos_count: criticalSos,
-    submerged_roads_count: submergedRoads,
-    open_corridors_count: openCorridors,
-    safe_shelters_count: safeShelters,
-    payload_kb: localFeatures.metadata.payload_kb || 14.2,
-    cellular_online: !isBlackout,
-    navic_locked: true,
-    lora_mesh_active: isBlackout,
-    max_rainfall_mm_hr: localRainfall,
-    max_water_depth_m: localWaterDepth,
-  };
-}
-
-export function compileLocalState(): TerraPulseStateResponse {
-  return {
-    mode: localMode,
-    features: localFeatures,
-    payload_kb: localFeatures.metadata.payload_kb || 14.2,
-    sos_packets: localSosPackets,
-    dispatches: localDispatches,
-    kpis: computeLocalKPIs(),
-    last_updated: new Date().toISOString(),
-  };
-}
-
-// ==============================================================================
-// Primary REST API Client with Offline Fallback
-// ==============================================================================
-
-export async function fetchState(): Promise<TerraPulseStateResponse> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`${API_URL}/api/state`, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (res.ok) {
-      const data: TerraPulseStateResponse = await res.json();
-      // Sync local in-memory & IndexedDB cache
-      localFeatures = data.features;
-      localDispatches = data.dispatches;
-      localSosPackets = data.sos_packets;
-      localMode = data.mode;
-      localRainfall = data.kpis.max_rainfall_mm_hr;
-      localWaterDepth = data.kpis.max_water_depth_m;
-
-      saveCachedFeatures(data.features);
-      saveCachedDispatches(data.dispatches);
-      return data;
-    }
-  } catch (err) {
-    console.debug("Backend unreachable, utilizing local cached state:", err);
-  }
-
-  // Load from offline store if available
-  const cachedGis = await getCachedFeatures();
-  if (cachedGis && cachedGis.features.length > 0) {
-    localFeatures = cachedGis;
-  }
-  const cachedDisps = await getCachedDispatches();
-  if (cachedDisps && cachedDisps.length > 0) {
-    localDispatches = cachedDisps;
-  }
-
-  return compileLocalState();
-}
-
-export async function triggerRainfallSpike(
-  multiplier: number = 4.5,
-  rainfall_mm_hr?: number
-): Promise<TerraPulseStateResponse> {
-  try {
-    const res = await fetch(`${API_URL}/api/scenario/rainfall-spike`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ multiplier, rainfall_mm_hr }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      saveCachedFeatures(data.features);
-      return data;
-    }
-  } catch (err) {
-    console.debug("Rainfall spike offline simulation fallback:", err);
-  }
-
-  // Local Offline Simulation Cascade
-  localRainfall = rainfall_mm_hr || 52.4;
-  localWaterDepth = 1.85;
-
-  localFeatures.features = localFeatures.features.map((f) => {
-    if (f.properties.layer === "mosdac_rain") {
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          severity: "CRITICAL",
-          rainfall_mm_hr: localRainfall,
-          recommended_action: "MOSDAC CONVECTIVE SURGE ALERT: Rain exceeds 15 mm/hr threshold. Auto-tasking Bhoonidhi SAR.",
-        },
-      };
-    }
-    if (f.properties.layer === "bhoonidhi_flood") {
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          severity: "CRITICAL",
-          water_depth_m: localWaterDepth,
-          recommended_action: "EOS-04 C-band SAR radar backscatter drop (<-16.5 dB). Sevan River inundation mapped.",
-        },
-      };
-    }
-    if (f.id === "VEDAS-ROAD-CAUSEWAY-02") {
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          road_status: "SUBMERGED",
-          severity: "CRITICAL",
-          water_depth_m: 0.95,
-          recommended_action: "ROAD CLOSED: Causeway submerged (+0.95m). Reroute all rescue boats to SH-18 ridge corridor.",
-        },
-      };
-    }
-    if (f.properties.layer === "vedas_corridors") {
-      return {
-        ...f,
-        properties: {
-          ...f.properties,
-          road_status: "CORRIDOR",
-          severity: "LOW",
-          recommended_action: "SAFE DRY CORRIDOR ACTIVE: Ridge crest road elevation 514m AMSL remains above flood crest.",
-        },
-      };
-    }
-    return f;
-  });
-
-  localFeatures.metadata.scenario_mode = "MOSDAC_RAIN_ALERT";
-  saveCachedFeatures(localFeatures);
-  return compileLocalState();
-}
-
-export async function switchOperationalMode(
-  mode: OperationalMode
-): Promise<TerraPulseStateResponse> {
-  try {
-    const res = await fetch(`${API_URL}/api/mode`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.debug("Mode switch offline fallback:", err);
-  }
-
-  localMode = mode;
-  return compileLocalState();
-}
-
-export async function pushEvacuationDispatch(payload: {
+export interface StateFilter { region?: string; bbox?: Bounds }
+export interface DispatchRequest {
   target_zone_id?: string;
   alert_headline?: string;
   safe_asset_name?: string;
   safe_lat?: number;
   safe_lng?: number;
-}): Promise<DispatchVector> {
-  try {
-    const res = await fetch(`${API_URL}/api/dispatch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      const data: DispatchVector = await res.json();
-      localDispatches = [data, ...localDispatches];
-      saveCachedDispatches(localDispatches);
-      return data;
-    }
-  } catch (err) {
-    console.debug("Dispatch push offline fallback:", err);
+  corridor_coordinates?: Point[];
+  corridor_id?: string;
+  region?: string;
+}
+
+const DEMO_TIME = "2026-11-21T18:00:00Z";
+const seedSos: SOSPacket[] = [
+  { sos_id: "SOS-20261121-0042", device_id: "FIELD-409B", timestamp: DEMO_TIME,
+    position: { lng: 77.058, lat: 23.091, accuracy_m: 3.5, navic_band: "L5+S_PASSIVE" },
+    triage: { severity: "CRITICAL", headcount: 4, needs: ["MEDICAL", "BOAT_RESCUE"] },
+    mesh: { transport: "LORA_865", hop_count: 2, max_hops: 7, relay_path: ["Hop 1", "Hop 2"], sync_status: "RELAYED_MESH" } },
+  { sos_id: "SOS-20261121-0089", device_id: "FIELD-112A", timestamp: DEMO_TIME,
+    position: { lng: 77.032, lat: 23.084, accuracy_m: 4.2, navic_band: "L5+S_PASSIVE" },
+    triage: { severity: "MODERATE", headcount: 7, needs: ["WATER", "FOOD"] },
+    mesh: { transport: "BLE_MESH", hop_count: 1, max_hops: 7, relay_path: ["Hop 1"], sync_status: "QUEUED_OFFLINE" } },
+];
+
+export function featurePoints(geometry: GeoJsonGeometry): Point[] {
+  switch (geometry.type) {
+    case "Point": return [geometry.coordinates];
+    case "LineString": return geometry.coordinates;
+    case "Polygon": return geometry.coordinates.flat();
+    case "MultiPolygon": return geometry.coordinates.flat(2);
   }
+}
 
-  const newDispatch: DispatchVector = {
-    dispatch_id: `DSP-${Math.floor(1000 + Math.random() * 9000)}`,
-    issued_at: new Date().toISOString(),
-    mode: localMode,
-    target_zone_id: payload.target_zone_id || "ZONE-KOTHRI-KALAN",
-    alert_headline:
-      payload.alert_headline ||
-      "EVACUATION DIRECTIVE: Causeway impassable. Move via SH-18 ridge bypass toward VIT Relief Shelter.",
-    evacuation_corridor: {
-      type: "LineString",
-      coordinates: [
-        [77.0160, 23.0805],
-        [77.0350, 23.1100],
-        [77.0600, 23.1450],
-        [77.0950, 23.1850],
-        [77.1250, 23.2100],
-      ],
-    },
-    safe_asset: {
-      name: payload.safe_asset_name || "VIT Bhopal Auditorium & Relief Shelter",
-      lat: payload.safe_lat || 23.0805,
-      lng: payload.safe_lng || 77.0160,
-    },
-    payload_kb: 1.45,
+export function featurePoint(feature: GeoJsonFeature): Point {
+  const coords = featurePoints(feature.geometry);
+  return coords[Math.floor(coords.length / 2)] ?? INDIA.center;
+}
+
+export function featureRegion(feature: GeoJsonFeature): Region {
+  return feature.properties.region_id ? getRegion(feature.properties.region_id) : nearestRegion(featurePoint(feature));
+}
+
+function polygonArea(rings: Point[][]): number {
+  return rings.reduce((area, ring, index) => {
+    const origin = ring[0];
+    if (!origin || ring.length < 4) return area;
+    let sum = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [x, y] = ring[i];
+      const [nextX, nextY] = ring[i + 1];
+      sum += (x - origin[0]) * (nextY - origin[1]) - (nextX - origin[0]) * (y - origin[1]);
+    }
+    return area + Math.abs(sum) * 6196 * Math.cos(origin[1] * Math.PI / 180) * (index ? -1 : 1);
+  }, 0);
+}
+
+function floodArea(feature: GeoJsonFeature): number {
+  const { geometry, properties } = feature;
+  if (!(properties.water_depth_m || properties.water_detected)) return 0;
+  if (properties.area_km2 !== undefined) return properties.area_km2;
+  if (geometry.type === "Polygon") return polygonArea(geometry.coordinates);
+  return geometry.type === "MultiPolygon" ? geometry.coordinates.reduce((sum, rings) => sum + polygonArea(rings), 0) : 0;
+}
+
+function kpis(state: Pick<TerraPulseStateResponse, "features" | "sos_packets" | "mode" | "payload_kb">): StateSummaryKPIs {
+  const features = state.features.features;
+  const rain = features.filter((f) => f.properties.layer === "mosdac_rain").map((f) => f.properties.rainfall_mm_hr ?? 0);
+  const flood = features.filter((f) => f.properties.layer === "bhoonidhi_flood");
+  const blocked = features.filter((f) => f.properties.road_status === "SUBMERGED").length;
+  const heavy = rain.filter((rate) => rate > (state.features.metadata.rainfall_threshold_mm_hr ?? 15)).length;
+  const mesh = state.mode !== "NORMAL";
+  return {
+    total_features: features.length,
+    active_sos_count: state.sos_packets.length,
+    critical_sos_count: state.sos_packets.filter((p) => p.triage.severity === "CRITICAL").length,
+    submerged_roads_count: blocked,
+    open_corridors_count: features.filter((f) => f.properties.road_status === "CORRIDOR").length,
+    safe_shelters_count: features.filter((f) => f.properties.asset_type === "SHELTER").length,
+    payload_kb: state.payload_kb,
+    cellular_online: state.mode !== "CELL_BLACKOUT_MESH_ACTIVE",
+    navic_locked: true,
+    lora_mesh_active: mesh,
+    max_rainfall_mm_hr: Math.max(0, ...rain),
+    max_water_depth_m: Math.max(0, ...flood.map((f) => f.properties.water_depth_m ?? 0)),
+    heavy_rain_alerts: heavy,
+    flooded_area_km2: Math.round(flood.reduce((sum, f) => sum + floodArea(f), 0) * 100) / 100,
+    people_at_risk: state.sos_packets.reduce((sum, p) => sum + p.triage.headcount, 0),
+    active_alerts: heavy + blocked + flood.filter((f) => (f.properties.water_depth_m ?? 0) >= .5 || f.properties.water_detected).length,
+    active_mesh_relays: mesh ? new Set(state.sos_packets.flatMap((p) => p.mesh.relay_path)).size : 0,
   };
+}
 
-  localDispatches = [newDispatch, ...localDispatches];
-  saveCachedDispatches(localDispatches);
-  return newDispatch;
+function localSeed(): TerraPulseStateResponse {
+  const state = {
+    mode: "NORMAL" as const,
+    features: SEEDED_BASIN_FEATURES,
+    payload_kb: new TextEncoder().encode(JSON.stringify(SEEDED_BASIN_FEATURES)).length / 1000,
+    sos_packets: seedSos,
+    dispatches: SEEDED_DISPATCHES,
+    last_updated: DEMO_TIME,
+    connection: "demo" as const,
+  };
+  return { ...state, kpis: kpis(state) };
+}
+
+let localState = localSeed();
+let fetched = false;
+let fetchGeneration = 0;
+let pendingSnapshot: Promise<TerraPulseStateResponse> | undefined;
+let pendingSosSync: Promise<SOSPacket[]> | undefined;
+
+export function compileLocalState() {
+  return localState;
+}
+
+export function scopeState(state: TerraPulseStateResponse, filter: StateFilter = {}): TerraPulseStateResponse {
+  const { region, bbox } = filter;
+  if ((!region || region === INDIA.id) && !bbox) return state;
+  const selected = getRegion(region);
+  const pointsMatch = (coords: Point[]) => {
+    if (!bbox || coords.some((point) => inBounds(point, bbox))) return true;
+    return !!coords.length && Math.min(...coords.map(([x]) => x)) <= bbox[2]
+      && Math.max(...coords.map(([x]) => x)) >= bbox[0]
+      && Math.min(...coords.map(([, y]) => y)) <= bbox[3]
+      && Math.max(...coords.map(([, y]) => y)) >= bbox[1];
+  };
+  const features: GeoJsonFeatureCollection = {
+    ...state.features,
+    metadata: { ...state.features.metadata, region_id: selected.id, bounding_box: bbox ?? selected.bbox },
+    features: state.features.features.filter((f) =>
+      (selected.id === INDIA.id || featureRegion(f).id === selected.id) && pointsMatch(featurePoints(f.geometry))),
+  };
+  const pointFilter = ({ lat, lng }: { lat: number; lng: number }) =>
+    inBounds([lng, lat], selected.bbox) && (!bbox || inBounds([lng, lat], bbox));
+  const view = {
+    ...state, features,
+    sos_packets: state.sos_packets.filter((p) => pointFilter(p.position)),
+    dispatches: state.dispatches.filter((d) => pointFilter(d.safe_asset)),
+    payload_kb: new TextEncoder().encode(JSON.stringify(features)).length / 1000,
+  };
+  return { ...view, kpis: kpis(view) };
+}
+
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+async function request<T>(path: string, body?: object, timeoutMs = 4500): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const configured = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "");
+    const response = await fetch(`${configured ?? ""}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({})) as { detail?: unknown };
+      const detail = typeof error.detail === "string" ? error.detail : "Check the values and try again.";
+      throw new ApiError(detail, response.status);
+    }
+    return await response.json() as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function remember(state: TerraPulseStateResponse, connection: Connection): TerraPulseStateResponse {
+  localState = { ...state, connection };
+  fetched = true;
+  void saveCachedFeatures(state.features, state.mode);
+  void saveCachedDispatches(state.dispatches);
+  return localState;
+}
+
+function rememberRemote(state: TerraPulseStateResponse): TerraPulseStateResponse {
+  fetchGeneration++;
+  return remember(state, "api");
+}
+
+export async function fetchState(filter: StateFilter = {}): Promise<TerraPulseStateResponse> {
+  const custom = !!filter.region || !!filter.bbox;
+  if (custom) {
+    const query = new URLSearchParams();
+    if (filter.region) query.set("region", filter.region);
+    if (filter.bbox) query.set("bbox", filter.bbox.join(","));
+    try {
+      return { ...await request<TerraPulseStateResponse>(`/api/state?${query}`), connection: "api" };
+    } catch {
+      return scopeState(await fetchState(), filter);
+    }
+  }
+  if (!pendingSnapshot) {
+    const version = fetchGeneration;
+    pendingSnapshot = (async () => {
+      try {
+        const data = await request<TerraPulseStateResponse>("/api/state");
+        return version === fetchGeneration ? remember(data, "api") : localState;
+      } catch {
+        if (version !== fetchGeneration) return localState;
+        if (!fetched) {
+          const [saved, routes] = await Promise.all([getCachedMap(), getCachedDispatches()]);
+          if (saved && version === fetchGeneration) {
+            const snapshot = { ...localState, features: saved.collection, mode: saved.mode, dispatches: routes };
+            localState = { ...snapshot, kpis: kpis(snapshot), connection: "cache" };
+            fetched = true;
+          }
+        } else if (localState.connection === "api") {
+          localState = { ...localState, connection: "cache" };
+        }
+        return localState;
+      }
+    })().finally(() => { pendingSnapshot = undefined; });
+  }
+  return pendingSnapshot;
+}
+
+export async function fetchRegions(): Promise<Region[]> {
+  try {
+    return await request<Region[]>("/api/regions");
+  } catch {
+    return REGIONS;
+  }
+}
+
+export async function syncPortalData(): Promise<TerraPulseStateResponse> {
+  return rememberRemote(await request<TerraPulseStateResponse>("/api/ingest/sync", {}, 20000));
+}
+
+function fallbackError(error: unknown) {
+  if (error instanceof ApiError && error.status < 500) throw error;
+}
+
+function commitLocal(state: TerraPulseStateResponse) {
+  fetchGeneration++;
+  return remember({ ...state, last_updated: new Date().toISOString(), kpis: kpis(state) }, "cache");
+}
+
+export async function triggerRainfallSpike(
+  multiplier = 4.5, rainfall_mm_hr?: number, region?: string,
+): Promise<TerraPulseStateResponse> {
+  try {
+    const data = await request<TerraPulseStateResponse>("/api/scenario/rainfall-spike", { multiplier, rainfall_mm_hr, region });
+    return !region || region === INDIA.id ? rememberRemote(data) : fetchState();
+  } catch (error) {
+    fallbackError(error);
+    const target = getRegion(region).id === INDIA.id ? "central-india" : getRegion(region).id;
+    const rate = rainfall_mm_hr ?? Math.min(250, scopeState(localState, { region: target }).kpis.max_rainfall_mm_hr * multiplier);
+    const heavy = rate > (localState.features.metadata.rainfall_threshold_mm_hr ?? 15);
+    const depth = heavy ? Math.min(3.2, 0.45 + rate / 34) : 0;
+    const features = localState.features.features.map((f): GeoJsonFeature => {
+      if (featureRegion(f).id !== target) return f;
+      const props = { ...f.properties, data_source_origin: "simulation_spike" as const, observed_at: new Date().toISOString() };
+      if (props.layer === "mosdac_rain") {
+        props.rainfall_mm_hr = rate;
+        props.severity = heavy ? "HIGH" : "LOW";
+      }
+      if (props.layer === "bhoonidhi_flood") {
+        props.water_depth_m = depth;
+        props.area_km2 = undefined;
+        props.severity = heavy ? "HIGH" : "LOW";
+      }
+      if (props.layer === "vedas_roads" && f.geometry.type === "LineString") {
+        props.road_status = heavy ? "SUBMERGED" : "OPEN";
+        props.severity = heavy ? "CRITICAL" : "LOW";
+        props.water_depth_m = depth;
+      }
+      return { ...f, properties: props };
+    });
+    const collection = { ...localState.features, features };
+    return commitLocal({
+      ...localState, features: collection,
+      payload_kb: new TextEncoder().encode(JSON.stringify(collection)).length / 1000,
+    });
+  }
+}
+
+export async function switchOperationalMode(mode: OperationalMode): Promise<TerraPulseStateResponse> {
+  try {
+    return rememberRemote(await request<TerraPulseStateResponse>("/api/mode", { mode }));
+  } catch (error) {
+    fallbackError(error);
+    return commitLocal({ ...localState, mode });
+  }
 }
 
 export async function resetScenario(): Promise<TerraPulseStateResponse> {
   try {
-    const res = await fetch(`${API_URL}/api/reset`, { method: "POST" });
-    if (res.ok) {
-      const data = await res.json();
-      saveCachedFeatures(data.features);
-      saveCachedDispatches(data.dispatches);
-      return data;
-    }
-  } catch (err) {
-    console.debug("Reset offline fallback:", err);
+    return rememberRemote(await request<TerraPulseStateResponse>("/api/reset", {}));
+  } catch (error) {
+    fallbackError(error);
+    return commitLocal(localSeed());
   }
-
-  localMode = "NORMAL";
-  localRainfall = 4.8;
-  localWaterDepth = 0.2;
-  localFeatures = JSON.parse(JSON.stringify(SEEDED_BASIN_FEATURES));
-  localDispatches = JSON.parse(JSON.stringify(SEEDED_DISPATCHES));
-  saveCachedFeatures(localFeatures);
-  saveCachedDispatches(localDispatches);
-
-  return compileLocalState();
 }
 
-export async function submitSOSPacket(packet: SOSPacket): Promise<SOSPacket> {
-  try {
-    const res = await fetch(`${API_URL}/api/sos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(packet),
-    });
-    if (res.ok) {
-      const saved: SOSPacket = await res.json();
-      localSosPackets = [saved, ...localSosPackets.filter((p) => p.sos_id !== saved.sos_id)];
-      return saved;
-    }
-  } catch (err) {
-    console.debug("Backend unreachable, queueing SOS packet locally:", err);
-  }
+export function routePair(state: TerraPulseStateResponse, region: string, corridorId?: string, near?: Point) {
+  const view = scopeState(state, { region: region === INDIA.id ? "central-india" : region });
+  const routes = view.features.features.filter((f) =>
+    f.properties.road_status === "CORRIDOR" && f.geometry.type === "LineString" && (!corridorId || f.id === corridorId));
+  if (near) routes.sort((a, b) => distanceKm(featurePoint(a), near) - distanceKm(featurePoint(b), near));
+  const route = routes[0];
+  if (!route || route.geometry.type !== "LineString" || !route.geometry.coordinates.length) return undefined;
+  const start = route.geometry.coordinates[0];
+  const end = route.geometry.coordinates[route.geometry.coordinates.length - 1];
+  const endpointDistance = (f: GeoJsonFeature) => Math.min(distanceKm(featurePoint(f), start), distanceKm(featurePoint(f), end));
+  const asset = view.features.features
+    .filter((f) => f.properties.asset_type === "SHELTER" && f.geometry.type === "Point")
+    .sort((a, b) => endpointDistance(a) - endpointDistance(b))[0];
+  if (!asset) return undefined;
+  const centre = featurePoint(asset);
+  const path = distanceKm(centre, start) < distanceKm(centre, end)
+    ? [...route.geometry.coordinates].reverse() : route.geometry.coordinates;
+  return { route, asset, path };
+}
 
-  // Queue locally
+export async function pushEvacuationDispatch(body: DispatchRequest): Promise<DispatchVector> {
+  try {
+    const data = await request<DispatchVector>("/api/dispatch", body);
+    localState = { ...localState, dispatches: [...localState.dispatches, data].slice(-50) };
+    await saveCachedDispatches(localState.dispatches);
+    return data;
+  } catch (error) {
+    fallbackError(error);
+    const pair = routePair(localState, body.region ?? INDIA.id, body.corridor_id);
+    const [lng, lat] = pair ? featurePoint(pair.asset) : [body.safe_lng, body.safe_lat];
+    const path = body.corridor_coordinates ?? pair?.path;
+    if (!path || lat === undefined || lng === undefined) throw new Error("This area has no route and shelter pair to share.");
+    const data: DispatchVector = {
+      dispatch_id: `DSP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      issued_at: new Date().toISOString(), mode: localState.mode,
+      target_zone_id: body.target_zone_id ?? body.region ?? "central-india",
+      alert_headline: body.alert_headline ?? "Follow the marked exercise route to the relief point.",
+      safe_asset: { name: body.safe_asset_name ?? pair?.asset.properties.title ?? "Relief point", lat, lng },
+      evacuation_corridor: { type: "LineString", coordinates: path },
+      payload_kb: 0, saved_locally: true,
+    };
+    data.payload_kb = (new TextEncoder().encode(JSON.stringify(data)).length + 4) / 1000;
+    commitLocal({ ...localState, dispatches: [...localState.dispatches, data].slice(-50) });
+    return data;
+  }
+}
+
+export async function submitSOSPacket(packet: SOSPacket, queueOnly = false): Promise<SOSPacket> {
+  if (!queueOnly && localState.mode !== "CELL_BLACKOUT_MESH_ACTIVE") {
+    try {
+      const saved = await request<SOSPacket>("/api/sos", packet);
+      localState = { ...localState, sos_packets: [...localState.sos_packets.filter((p) => p.sos_id !== saved.sos_id), saved] };
+      return saved;
+    } catch (error) {
+      fallbackError(error);
+    }
+  }
   await queueOfflineSOS(packet);
-  localSosPackets = [packet, ...localSosPackets.filter((p) => p.sos_id !== packet.sos_id)];
   return packet;
 }
 
-export async function relaySOSPacket(sosId: string): Promise<SOSPacket> {
-  try {
-    const res = await fetch(`${API_URL}/api/sos/${sosId}/relay`, { method: "POST" });
-    if (res.ok) return await res.json();
-  } catch (err) {
-    console.debug("Relay offline fallback:", err);
+export async function syncQueuedSOS(): Promise<SOSPacket[]> {
+  if (!pendingSosSync) {
+    pendingSosSync = (async () => {
+      const queued = await getQueuedOfflineSOS();
+      const waiting = queued.filter((packet) => packet.mesh.sync_status !== "SYNCED_COMMAND");
+      if (!waiting.length || !navigator.onLine || localState.connection !== "api"
+        || localState.mode === "CELL_BLACKOUT_MESH_ACTIVE") return [];
+      const received: SOSPacket[] = [];
+      for (let i = 0; i < waiting.length; i += 50) {
+        const batch = await request<SOSPacket[]>("/api/sos", waiting.slice(i, i + 50));
+        const acknowledged = batch.filter((p) => p.mesh.sync_status === "SYNCED_COMMAND");
+        await removeQueuedSOS(acknowledged.map((p) => p.sos_id));
+        received.push(...acknowledged);
+      }
+      return received;
+    })().finally(() => { pendingSosSync = undefined; });
   }
+  return pendingSosSync;
+}
 
-  const existing = localSosPackets.find((p) => p.sos_id === sosId);
-  if (existing) {
-    existing.mesh.hop_count += 1;
-    existing.mesh.relay_path.push(`NODE-HOP-${existing.mesh.hop_count}`);
-    existing.mesh.sync_status = "RELAYED_MESH";
-    return existing;
-  }
-  throw new Error("SOS packet not found");
+export async function relaySOSPacket(sosId: string): Promise<SOSPacket> {
+  return request<SOSPacket>(`/api/sos/${encodeURIComponent(sosId)}/relay`, {});
 }
 
 export async function resolveSOSPacket(sosId: string): Promise<{ status: string }> {
-  try {
-    const res = await fetch(`${API_URL}/api/sos/${sosId}/resolve`, { method: "POST" });
-    if (res.ok) return await res.json();
-  } catch (err) {
-    console.debug("Resolve offline fallback:", err);
-  }
-
-  localSosPackets = localSosPackets.filter((p) => p.sos_id !== sosId);
-  return { status: "RESOLVED" };
+  return request<{ status: string }>(`/api/sos/${encodeURIComponent(sosId)}/resolve`, {});
 }
 
-// ==============================================================================
-// Real-time Telemetry Service: WS with Exponential Backoff + Polling Fallback
-// ==============================================================================
+interface TelemetryEvent {
+  event: string;
+  timestamp: string;
+  data?: { reason?: string; mode?: OperationalMode; region?: string; destination?: string; sos_id?: string };
+}
 
-type TelemetryCallback = (event: { event: string; data?: any; timestamp: string }) => void;
+export function subscribeToTelemetry(callback: (event: TelemetryEvent) => void): () => void {
+  let socket: WebSocket | undefined;
+  let reconnect: ReturnType<typeof setTimeout>;
+  let delay = 1000;
+  let stopped = false;
+  const notify = (event: string) => callback({ event, timestamp: new Date().toISOString() });
 
-class TelemetryService {
-  private ws: WebSocket | null = null;
-  private subscribers: Set<TelemetryCallback> = new Set();
-  private retryDelayMs = 1000;
-  private maxRetryDelayMs = 15000;
-  private reconnectTimer: any = null;
-  private pollingTimer: any = null;
-  private pingInterval: any = null;
-  private isDestroyed = false;
-
-  constructor() {
-    this.init();
-  }
-
-  private init() {
-    if (typeof window === "undefined") return;
-    this.connectWs();
-    this.startPollingFallback();
-  }
-
-  private connectWs() {
-    if (this.isDestroyed || typeof window === "undefined") return;
-
+  const connect = () => {
+    if (stopped || !navigator.onLine || socket) return;
+    const configured = process.env.NEXT_PUBLIC_WS_URL || undefined;
+    const url = new URL("/ws/live", window.location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     try {
-      this.ws = new WebSocket(WS_URL);
-
-      this.ws.onopen = () => {
-        this.retryDelayMs = 1000;
-        this.startHeartbeat();
-        this.notify({ event: "connected", timestamp: new Date().toISOString() });
+      socket = new WebSocket(configured ?? url);
+      socket.onmessage = ({ data }) => {
+        try { callback(JSON.parse(data) as TelemetryEvent); } catch { /* Ignore heartbeat replies. */ }
       };
-
-      this.ws.onmessage = (event) => {
-        try {
-          if (event.data === "pong") return;
-          const parsed = JSON.parse(event.data);
-          this.notify(parsed);
-        } catch {
-          // non-json
+      socket.onopen = () => { delay = 1000; };
+      socket.onclose = () => {
+        socket = undefined;
+        if (!stopped) {
+          reconnect = setTimeout(connect, delay);
+          delay = Math.min(delay * 2, 15000);
         }
       };
-
-      this.ws.onerror = () => {
-        // silently handled in onclose
-      };
-
-      this.ws.onclose = () => {
-        this.stopHeartbeat();
-        this.scheduleReconnect();
-      };
     } catch {
-      this.scheduleReconnect();
+      // The polling interval still refreshes state.
     }
-  }
-
-  private startHeartbeat() {
-    this.stopHeartbeat();
-    this.pingInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send("ping");
-      }
-    }, 15000);
-  }
-
-  private stopHeartbeat() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-  }
-
-  private scheduleReconnect() {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => {
-      this.connectWs();
-      this.retryDelayMs = Math.min(this.retryDelayMs * 1.6, this.maxRetryDelayMs);
-    }, this.retryDelayMs);
-  }
-
-  // Lightweight 6-second polling fallback so multiple tabs remain synchronized
-  private startPollingFallback() {
-    if (this.pollingTimer) clearInterval(this.pollingTimer);
-    this.pollingTimer = setInterval(async () => {
-      if (this.subscribers.size > 0) {
-        try {
-          const state = await fetchState();
-          this.notify({
-            event: "poll_sync",
-            data: state,
-            timestamp: new Date().toISOString(),
-          });
-        } catch {}
-      }
-    }, 6000);
-  }
-
-  private notify(evt: { event: string; data?: any; timestamp: string }) {
-    this.subscribers.forEach((cb) => {
-      try {
-        cb(evt);
-      } catch (e) {
-        console.error("Telemetry listener error:", e);
-      }
-    });
-  }
-
-  public subscribe(cb: TelemetryCallback): () => void {
-    this.subscribers.add(cb);
-    return () => {
-      this.subscribers.delete(cb);
-    };
-  }
-
-  public destroy() {
-    this.isDestroyed = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.pollingTimer) clearInterval(this.pollingTimer);
-    this.stopHeartbeat();
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch {}
-    }
-    this.subscribers.clear();
-  }
-}
-
-let globalTelemetry: TelemetryService | null = null;
-
-export function subscribeToTelemetry(callback: TelemetryCallback): () => void {
-  if (typeof window === "undefined") return () => {};
-  if (!globalTelemetry) {
-    globalTelemetry = new TelemetryService();
-  }
-  return globalTelemetry.subscribe(callback);
+  };
+  const online = () => { notify("online"); connect(); };
+  const offline = () => notify("offline");
+  const poll = setInterval(() => { if (navigator.onLine) notify("poll_sync"); }, 6500);
+  const ping = setInterval(() => { if (socket?.readyState === WebSocket.OPEN) socket.send("ping"); }, 15000);
+  window.addEventListener("online", online);
+  window.addEventListener("offline", offline);
+  connect();
+  return () => {
+    stopped = true;
+    clearInterval(poll);
+    clearInterval(ping);
+    clearTimeout(reconnect);
+    if (socket?.readyState === WebSocket.CONNECTING) socket.onopen = () => socket?.close();
+    else socket?.close();
+    window.removeEventListener("online", online);
+    window.removeEventListener("offline", offline);
+  };
 }

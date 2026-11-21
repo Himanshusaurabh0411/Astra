@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://terrapulse.isro.gov.in/schemas/geojson_feature.schema.json",
+  "$id": "urn:terrapulse:geojson",
   "title": "TerraPulse GeoJSON FeatureCollection Schema",
   "description": "JSON Schema for multi-portal GeoAI FeatureCollection responses (<100 KB target payload) fusing MOSDAC, Bhoonidhi, VEDAS, and Bhuvan data.",
   "type": "object",
@@ -35,7 +35,7 @@
         "payload_kb": {
           "type": "number",
           "minimum": 0,
-          "maximum": 100,
+          "exclusiveMaximum": 100,
           "description": "Total compressed payload size in kilobytes, constrained to <100 KB for disaster bandwidth"
         },
         "scenario_mode": {
@@ -56,6 +56,21 @@
         },
         "basin_name": {
           "type": "string"
+        },
+        "region_id": { "type": "string" },
+        "total_records": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "portal_provenance": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["source_type", "records_ingested", "last_synced_at"],
+            "properties": {
+              "source_type": { "enum": ["live_portal", "local_sample", "seed_fallback"] },
+              "records_ingested": { "type": "integer", "minimum": 0 },
+              "last_synced_at": { "type": "string", "format": "date-time" }
+            }
+          }
         },
         "bounding_box": {
           "type": "array",

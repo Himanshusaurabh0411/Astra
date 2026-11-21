@@ -1,170 +1,128 @@
-import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.api.ws_live import ws_manager
+from app.config import settings
+from app.models.regions import contains, get_regions
 from app.models.schemas import (
-    DispatchVector,
-    HazardSeverity,
-    MeshModel,
-    MeshSyncStatus,
-    MeshTransport,
-    NavicBand,
-    PositionModel,
-    SOSPacket,
-    TriageModel,
+    DispatchVector, HazardSeverity, MeshModel, MeshSyncStatus, NavicBand,
+    PositionModel, SOSPacket, TriageModel,
 )
 from app.models.state import state_store
-from app.services.mesh_relay_service import mesh_relay_service
+from app.services.mesh_relay_service import MAX_ACTIVE_SOS, mesh_relay_service
 
-logger = logging.getLogger("terrapulse.api.sos")
-router = APIRouter(prefix="/api", tags=["Tactical NavIC + LoRa Mesh & Field Dispatch"])
+router = APIRouter(prefix="/api", tags=["Rescue & Safe Routes"])
+StringNeed = Annotated[str, Field(min_length=1, max_length=32)]
+Batch = Annotated[list[SOSPacket], Field(min_length=1, max_length=50)]
+Lat = Annotated[float, Field(ge=-90, le=90)]
+Lng = Annotated[float, Field(ge=-180, le=180)]
 
 
 class SimpleSOSRequest(BaseModel):
-    lat: float = Field(ge=-90.0, le=90.0, description="Latitude")
-    lng: float = Field(ge=-180.0, le=180.0, description="Longitude")
-    severity: HazardSeverity = Field(default=HazardSeverity.MODERATE)
-    headcount: int = Field(default=1, ge=1)
-    needs: List[str] = Field(default_factory=lambda: ["EVACUATION"])
-    note: Optional[str] = None
-    device_id: Optional[str] = None
-    navic_band: NavicBand = NavicBand.L5
+    model_config = ConfigDict(extra="forbid")
+
+    lat: Lat
+    lng: Lng
+    severity: HazardSeverity = HazardSeverity.MODERATE
+    headcount: int = Field(default=1, ge=1, le=10_000)
+    needs: list[StringNeed] = Field(default_factory=lambda: ["EVACUATION"], max_length=10)
+    note: str | None = Field(default=None, max_length=240)
+    device_id: str | None = Field(default=None, min_length=1, max_length=64)
+    navic_band: NavicBand = NavicBand.L5_S_PASSIVE
 
 
 class DispatchPushRequest(BaseModel):
-    target_zone_id: str = Field(description="Target rescue zone identifier (e.g. ZONE-KOTHRI-KALAN-SOUTH)")
-    alert_headline: str = Field(description="Urgent instructions for evacuees & responders")
-    corridor_coordinates: Optional[List[List[float]]] = Field(
-        default=None, description="Optional LineString coordinates of safe dry corridor"
-    )
-    safe_asset_name: Optional[str] = Field(default=None, description="Destination shelter name")
-    safe_lat: Optional[float] = Field(default=None, description="Destination latitude")
-    safe_lng: Optional[float] = Field(default=None, description="Destination longitude")
+    target_zone_id: str | None = Field(default=None, min_length=1, max_length=120)
+    alert_headline: str | None = Field(default=None, min_length=1, max_length=240)
+    corridor_coordinates: list[tuple[Lng, Lat]] | None = Field(default=None, min_length=2, max_length=1600)
+    safe_asset_name: str | None = Field(default=None, max_length=160)
+    safe_lat: Lat | None = None
+    safe_lng: Lng | None = None
+    region: str | None = Field(default=None, max_length=120)
+    corridor_id: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_area(self):
+        if (self.safe_lat is None) != (self.safe_lng is None):
+            raise ValueError("Enter both coordinates for the relief point.")
+        if self.safe_lng is not None and not contains(settings.india_bbox, (self.safe_lng, self.safe_lat)):
+            raise ValueError("Choose a relief point within the India coverage area.")
+        if self.corridor_coordinates and not all(contains(settings.india_bbox, pt) for pt in self.corridor_coordinates):
+            raise ValueError("Choose a route within the India coverage area.")
+        return self
 
 
-@router.get(
-    "/sos",
-    summary="List Active NavIC + LoRa Distress Beacons",
-    response_model=List[SOSPacket],
-    response_model_exclude_none=True,
-)
-async def list_sos_beacons() -> List[SOSPacket]:
-    """Returns all currently registered SOS distress packets across the tactical mesh."""
+@router.get("/sos", response_model=list[SOSPacket], response_model_exclude_none=True)
+async def list_sos_beacons() -> list[SOSPacket]:
     return list(state_store.sos_packets.values())
 
 
-@router.post(
-    "/sos",
-    summary="Submit or Ingest NavIC/LoRa Distress SOS Beacon(s)",
-    response_model=Union[SOSPacket, List[SOSPacket]],
-    response_model_exclude_none=True,
-)
-async def ingest_sos_beacon(payload: Union[SOSPacket, List[SOSPacket], SimpleSOSRequest]) -> Union[SOSPacket, List[SOSPacket]]:
-    """
-    Ingests distress beacons from off-grid NavIC nodes or simulated LoRa relays:
-    - Accepts full SOSPacket contract, batch array of SOSPackets, or simplified field beacon.
-    - Simulates mesh hop advancement, validates NavIC coordinates, updates sync status.
-    - Broadcasts 'sos_received' event to active WebSocket subscribers.
-    """
-    try:
-        # 1. Single full SOSPacket
-        if isinstance(payload, SOSPacket):
-            registered = mesh_relay_service.register_or_enrich_sos(payload)
-            await ws_manager.broadcast("sos_received", registered.model_dump())
-            return registered
-
-        # 2. Batch of full SOSPackets
-        elif isinstance(payload, list):
-            results = []
-            for packet in payload:
-                reg = mesh_relay_service.register_or_enrich_sos(packet)
-                results.append(reg)
-            await ws_manager.broadcast("sos_batch_received", [r.model_dump() for r in results])
-            return results
-
-        # 3. Simple field request
-        elif isinstance(payload, SimpleSOSRequest):
-            sos_id = f"SOS-{uuid4().hex[:8].upper()}"
-            packet = SOSPacket(
-                sos_id=sos_id,
-                device_id=payload.device_id or f"NAVIC-NODE-{uuid4().hex[:4].upper()}",
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                position=PositionModel(
-                    lat=payload.lat,
-                    lng=payload.lng,
-                    accuracy_m=4.0,
-                    navic_band=payload.navic_band,
-                ),
-                triage=TriageModel(
-                    severity=payload.severity,
-                    headcount=payload.headcount,
-                    needs=payload.needs,
-                    note=payload.note,
-                ),
-                mesh=MeshModel(
-                    transport=MeshTransport.LORA_865,
-                    hop_count=1,
-                    max_hops=7,
-                    relay_path=["NODE-KOTHRI-CHOWK-01"],
-                    sync_status=MeshSyncStatus.RELAYED_MESH if not state_store.cellular_online else MeshSyncStatus.SYNCED_COMMAND,
-                ),
-            )
-            registered = mesh_relay_service.register_or_enrich_sos(packet)
-            await ws_manager.broadcast("sos_received", registered.model_dump())
-            return registered
-
-    except Exception as e:
-        logger.error(f"Failed to ingest SOS beacon: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid SOS distress packet: {str(e)}",
+@router.post("/sos", response_model=SOSPacket | list[SOSPacket], response_model_exclude_none=True)
+async def ingest_sos_beacon(payload: SOSPacket | Batch | SimpleSOSRequest):
+    batch = isinstance(payload, list)
+    if isinstance(payload, SimpleSOSRequest):
+        payload = SOSPacket(
+            sos_id=f"SOS-{uuid4().hex[:12].upper()}",
+            device_id=payload.device_id or f"FIELD-{uuid4().hex[:8].upper()}",
+            position=PositionModel(lat=payload.lat, lng=payload.lng, navic_band=payload.navic_band),
+            triage=TriageModel(
+                severity=payload.severity, headcount=payload.headcount, needs=payload.needs, note=payload.note,
+            ),
+            mesh=MeshModel(),
         )
+    packets = payload if batch else [payload]
+    if any(not contains(settings.india_bbox, (p.position.lng, p.position.lat)) for p in packets):
+        raise HTTPException(422, "Choose a location within the India coverage area.")
+    new_ids = {p.sos_id for p in packets} - state_store.sos_packets.keys()
+    if len(state_store.sos_packets) + len(new_ids) > MAX_ACTIVE_SOS:
+        raise HTTPException(503, "The exercise rescue queue is full. Try syncing again later.")
+    saved = [mesh_relay_service.register_or_enrich_sos(packet) for packet in packets]
+    for sos_id in dict.fromkeys(packet.sos_id for packet in saved if packet.sos_id in new_ids):
+        await ws_manager.broadcast("sos_received", {"sos_id": sos_id})
+    return saved if batch else saved[0]
 
 
-@router.get(
-    "/dispatch",
-    summary="List Evacuation Corridor Dispatch Vectors",
-    response_model=List[DispatchVector],
-    response_model_exclude_none=True,
-)
-async def list_dispatches() -> List[DispatchVector]:
-    """Returns active dry evacuation corridor dispatch pushes."""
+@router.post("/sos/{sos_id}/relay", response_model=SOSPacket, response_model_exclude_none=True)
+async def relay_sos(sos_id: str) -> SOSPacket:
+    packet = state_store.sos_packets.get(sos_id)
+    if not packet:
+        raise HTTPException(404, "This help request could not be found.")
+    if packet.mesh.hop_count < packet.mesh.max_hops:
+        packet.mesh.hop_count += 1
+        packet.mesh.relay_path.append(f"NODE-RELAY-{packet.mesh.hop_count:02d}")
+    if not state_store.cellular_online:
+        packet.mesh.sync_status = MeshSyncStatus.RELAYED_MESH
+    await ws_manager.broadcast("state_updated", {"reason": "sos_relayed"})
+    return packet
+
+
+@router.post("/sos/{sos_id}/resolve")
+async def resolve_sos(sos_id: str) -> dict:
+    if state_store.sos_packets.pop(sos_id, None) is None:
+        raise HTTPException(404, "This help request could not be found.")
+    await ws_manager.broadcast("state_updated", {"reason": "sos_resolved"})
+    return {"status": "RESOLVED"}
+
+
+@router.get("/dispatch", response_model=list[DispatchVector], response_model_exclude_none=True)
+async def list_dispatches() -> list[DispatchVector]:
     return list(state_store.dispatches.values())
 
 
-@router.post(
-    "/dispatch",
-    summary="Push Lightweight Evacuation Vector to Field Nodes",
-    response_model=DispatchVector,
-    response_model_exclude_none=True,
-)
+@router.post("/dispatch", response_model=DispatchVector, response_model_exclude_none=True)
 async def create_dispatch_vector(req: DispatchPushRequest) -> DispatchVector:
-    """
-    Constructs and pushes a compact (<48 KB) evacuation vector corridor
-    from Central Command to tactical field rescue units and citizen nodes.
-    Broadcasts 'dispatch_pushed' event over WebSocket.
-    """
+    args = req.model_dump()
+    if req.corridor_coordinates:
+        args["corridor_coordinates"] = [list(pt) for pt in req.corridor_coordinates]
     try:
-        dispatch = mesh_relay_service.build_dispatch_vector(
-            target_zone_id=req.target_zone_id,
-            alert_headline=req.alert_headline,
-            corridor_coordinates=req.corridor_coordinates,
-            safe_asset_name=req.safe_asset_name,
-            safe_lat=req.safe_lat,
-            safe_lng=req.safe_lng,
-        )
-
-        await ws_manager.broadcast("dispatch_pushed", dispatch.model_dump())
-        return dispatch
-
-    except Exception as e:
-        logger.error(f"Failed to build evacuation dispatch vector: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to compile evacuation dispatch: {str(e)}",
-        )
+        dispatch = mesh_relay_service.build_dispatch_vector(**args)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    await ws_manager.broadcast("dispatch_pushed", {
+        "dispatch_id": dispatch.dispatch_id,
+        "destination": dispatch.safe_asset.name,
+    })
+    return dispatch

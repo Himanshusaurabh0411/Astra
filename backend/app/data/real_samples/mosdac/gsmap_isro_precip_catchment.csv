@@ -1,0 +1,5 @@
+grid_id,basin_zone,lat,lng,rainfall_rate_mm_hr,satellite,sensor,timestamp_utc,severity
+GSMAP-7705-2309,Kothri Kalan South Catchment,23.0910,77.0580,18.8,GSMaP_ISRO,Microwave-IR Combined,2026-11-22T02:15:00Z,CRITICAL
+GSMAP-7720-2318,Sehore Central Basin,23.1800,77.2000,16.4,GSMaP_ISRO,Microwave-IR Combined,2026-11-22T02:15:00Z,HIGH
+GSMAP-7735-2322,Phanda Rural Block,23.2200,77.3500,9.1,GSMaP_ISRO,Microwave-IR Combined,2026-11-22T02:15:00Z,MODERATE
+GSMAP-7740-2325,Bhopal Kerwa Reservoir Inflow,23.2500,77.4000,6.5,GSMaP_ISRO,Microwave-IR Combined,2026-11-22T02:15:00Z,LOW

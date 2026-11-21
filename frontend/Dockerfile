@@ -1,35 +1,27 @@
-# ==============================================================================
-# TerraPulse Central Command GIS Frontend Dockerfile
-# Space-to-Ground Geospatial Operations & Tactical Mesh Dashboard
-# ==============================================================================
+FROM node:22-alpine AS build
+WORKDIR /workspace/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --legacy-peer-deps
+COPY frontend/next.config.mjs frontend/next-env.d.ts frontend/tsconfig.json frontend/postcss.config.js frontend/tailwind.config.ts ./
+COPY frontend/src ./src
+COPY frontend/public ./public
+COPY contracts/india-regions.json /workspace/contracts/india-regions.json
+COPY backend/app/data/seed_catchment.geojson /workspace/backend/app/data/seed_catchment.geojson
 
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+ARG BACKEND_URL=http://backend:8000
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
+ENV BACKEND_URL=${BACKEND_URL} \
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} \
+    NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
-
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-
-USER nextjs
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+COPY --from=build --chown=node:node /workspace/frontend/.next/standalone ./
+COPY --from=build --chown=node:node /workspace/frontend/.next/static ./frontend/.next/static
+COPY --from=build --chown=node:node /workspace/frontend/public ./frontend/public
+USER node
 EXPOSE 3000
-
-CMD ["npm", "start"]
+CMD ["node", "frontend/server.js"]
