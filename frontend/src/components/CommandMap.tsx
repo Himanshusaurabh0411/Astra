@@ -8,25 +8,14 @@ import {
   DispatchVector,
 } from "@/lib/terrapulseClient";
 import {
-  CloudRain,
-  Waves,
-  Route,
-  ShieldCheck,
-  Building2,
-  Radio,
   Plus,
   Minus,
-  RotateCcw,
-  AlertTriangle,
-  Send,
-  Info,
-  Layers,
   Crosshair,
-  Compass,
-  Focus,
+  Layers,
+  AlertTriangle,
 } from "lucide-react";
 
-interface CommandMapProps {
+export interface CommandMapProps {
   features?: GeoJsonFeatureCollection;
   sosPackets?: SOSPacket[];
   dispatches?: DispatchVector[];
@@ -42,6 +31,7 @@ interface CommandMapProps {
   onSelectFeature?: (item: any) => void;
   selectedItem?: any;
   onDispatchCorridor?: (corridorFeature: any) => void;
+  isAdvancedView?: boolean;
 }
 
 // Bounding box for Kothri Kalan / Sehore / Bhopal basin
@@ -52,7 +42,7 @@ const BASIN_BBOX = {
   maxLat: 23.28,
 };
 
-export default function CommandMap({
+export function CommandMap({
   features,
   sosPackets = [],
   dispatches = [],
@@ -61,21 +51,23 @@ export default function CommandMap({
   onSelectFeature,
   selectedItem,
   onDispatchCorridor,
+  isAdvancedView = false,
 }: CommandMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [viewBox, setViewBox] = useState({ width: 1000, height: 600 });
+  const [viewBox, setViewBox] = useState({ width: 900, height: 500 });
+  const [mapViewMode, setMapViewMode] = useState<"satellite" | "map">("satellite");
   const [hoveredItem, setHoveredItem] = useState<{ item: any; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
         setViewBox({
-          width: containerRef.current.clientWidth || 1000,
-          height: containerRef.current.clientHeight || 600,
+          width: containerRef.current.clientWidth || 900,
+          height: containerRef.current.clientHeight || 500,
         });
       }
     };
@@ -92,7 +84,7 @@ export default function CommandMap({
     const normX = (lng - BASIN_BBOX.minLng) / lngSpan;
     const normY = 1.0 - (lat - BASIN_BBOX.minLat) / latSpan;
 
-    const pad = 54;
+    const pad = 48;
     const mapW = viewBox.width - pad * 2;
     const mapH = viewBox.height - pad * 2;
 
@@ -121,7 +113,6 @@ export default function CommandMap({
   const handleFeatureClick = (item: any) => {
     onSelectFeature?.(item);
 
-    // Smooth focus center on clicked element
     if (item.sos_id && item.position) {
       focusCoordinates(item.position.lng, item.position.lat);
     } else if (item.geometry) {
@@ -158,8 +149,9 @@ export default function CommandMap({
       .join(" ");
   };
 
+  // Drag Pan Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).tagName === "BUTTON") return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
@@ -177,58 +169,103 @@ export default function CommandMap({
   const resetView = () => {
     setZoom(1.0);
     setPan({ x: 0, y: 0 });
-    setHoveredItem(null);
+    onSelectFeature?.(null);
   };
 
   const featureList = features?.features || [];
 
+  // Focal Epicenter (Sevan River Crossing / Kothri Kalan)
+  const [epicenterX, epicenterY] = project(77.0580, 23.0910);
+
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-[#050811] overflow-hidden select-none cursor-crosshair border border-slate-800"
+      className="relative w-full h-full bg-[#0A101D] select-none overflow-hidden cursor-crosshair rounded-2xl"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => {
-        handleMouseUp();
-        setHoveredItem(null);
-      }}
+      onMouseLeave={handleMouseUp}
     >
-      {/* Precision Cartographic Grid Lines */}
-      <svg className="w-full h-full absolute inset-0">
+      {/* SVG GIS Vector Map Surface */}
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
+        className="w-full h-full block"
+      >
         <defs>
-          <pattern id="grid-fine" width="30" height="30" patternUnits="userSpaceOnUse">
-            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.8" />
+          {/* Topographic Contour Texture Pattern */}
+          <pattern id="survey-contours" width="120" height="120" patternUnits="userSpaceOnUse">
+            <path
+              d="M0 20 Q 30 10, 60 25 T 120 20 M0 45 Q 40 35, 75 50 T 120 40 M0 70 Q 25 80, 60 65 T 120 75 M0 95 Q 50 85, 80 100 T 120 90"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="0.5"
+              strokeOpacity="0.04"
+              strokeDasharray="3 2"
+            />
           </pattern>
-          <pattern id="rain-diag" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="8" stroke="#38bdf8" strokeWidth="1" strokeOpacity="0.4" />
-          </pattern>
-          <pattern id="flood-hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
-            <line x1="0" y1="0" x2="0" y2="10" stroke="#2563eb" strokeWidth="1.2" strokeOpacity="0.5" />
+
+          {/* Satellite Multi-Spectral Terrain Texture Pattern */}
+          <radialGradient id="sat-veg-1" cx="35%" cy="40%" r="65%">
+            <stop offset="0%" stopColor="#1E3321" />
+            <stop offset="50%" stopColor="#142618" />
+            <stop offset="100%" stopColor="#0B1710" />
+          </radialGradient>
+          <radialGradient id="sat-ridge-1" cx="65%" cy="30%" r="55%">
+            <stop offset="0%" stopColor="#2E2A1A" />
+            <stop offset="70%" stopColor="#1F1D13" />
+            <stop offset="100%" stopColor="#0E1410" />
+          </radialGradient>
+
+          {/* Rain Diagonal Hatch */}
+          <pattern id="rain-diag" width="12" height="12" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="0" x2="0" y2="12" stroke="#5BC0FF" strokeWidth="1.2" strokeOpacity="0.35" />
           </pattern>
         </defs>
 
-        <rect width="100%" height="100%" fill="url(#grid-fine)" />
+        {/* 1. Base Layer (Satellite Terrain vs Cartographic Map) */}
+        {mapViewMode === "satellite" ? (
+          <g>
+            {/* Rich Photographic Satellite Image Base */}
+            <image
+              href="/sat-terrain.jpg"
+              x="0"
+              y="0"
+              width={viewBox.width}
+              height={viewBox.height}
+              preserveAspectRatio="xMidYMid slice"
+              className="opacity-95"
+            />
+            {/* Subtle multi-spectral contrast overlays */}
+            <rect width={viewBox.width} height={viewBox.height} fill="url(#sat-veg-1)" opacity="0.3" pointerEvents="none" />
+          </g>
+        ) : (
+          <g>
+            <rect width={viewBox.width} height={viewBox.height} fill="#0A0F1D" />
+            <rect width={viewBox.width} height={viewBox.height} fill="url(#survey-contours)" pointerEvents="none" />
+          </g>
+        )}
 
-        {/* Lat / Long Coordinates Ticks */}
-        <g className="text-slate-500 font-mono text-[9px] pointer-events-none">
-          {[23.10, 23.15, 23.20, 23.25].map((lat) => {
+        {/* 2. Coordinate Grid Lines (Only in Advanced View or subtle in standard) */}
+        <g opacity={isAdvancedView ? "0.35" : "0.15"} pointerEvents="none" className="font-mono text-[9px]">
+          {[23.08, 23.14, 23.20, 23.26].map((lat) => {
             const [, y] = project(BASIN_BBOX.minLng, lat);
             return (
               <g key={`lat-${lat}`}>
-                <line x1="0" y1={y} x2={viewBox.width} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="2 4" />
-                <text x="8" y={y - 3} fill="#64748b" className="tabular-data">
+                <line x1="0" y1={y} x2={viewBox.width} y2={y} stroke="rgba(255,255,255,0.12)" strokeDasharray="2 4" />
+                <text x="8" y={y - 3} fill="#94A3B8" className="tabular-nums font-mono text-[9px]">
                   {lat.toFixed(2)}°N
                 </text>
               </g>
             );
           })}
-          {[77.05, 77.15, 77.25, 77.35].map((lng) => {
+          {[77.02, 77.10, 77.20, 77.30, 77.40].map((lng) => {
             const [x] = project(lng, BASIN_BBOX.minLat);
             return (
               <g key={`lng-${lng}`}>
-                <line x1={x} y1="0" x2={x} y2={viewBox.height} stroke="rgba(255,255,255,0.06)" strokeDasharray="2 4" />
-                <text x={x + 3} y={viewBox.height - 8} fill="#64748b" className="tabular-data">
+                <line x1={x} y1="0" x2={x} y2={viewBox.height} stroke="rgba(255,255,255,0.12)" strokeDasharray="2 4" />
+                <text x={x + 3} y={viewBox.height - 8} fill="#94A3B8" className="tabular-nums font-mono text-[9px]">
                   {lng.toFixed(2)}°E
                 </text>
               </g>
@@ -236,7 +273,7 @@ export default function CommandMap({
           })}
         </g>
 
-        {/* LAYER 1: MOSDAC Rain Polygons (Precipitation >=15 mm/hr) */}
+        {/* 3. LAYER: Rain Polygons */}
         {activeLayers.mosdac_rain &&
           featureList
             .filter((f) => f.properties.layer === "mosdac_rain")
@@ -248,7 +285,7 @@ export default function CommandMap({
               return (
                 <g
                   key={f.id || "mosdac-rain"}
-                  className={`cursor-pointer transition-opacity ${isBreached ? "anim-pulse-subtle" : ""}`}
+                  className="cursor-pointer transition-opacity"
                   onClick={() => handleFeatureClick(f)}
                   onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setHoveredItem(null)}
@@ -256,25 +293,24 @@ export default function CommandMap({
                   <path
                     d={pathStr}
                     fill="url(#rain-diag)"
-                    stroke={isBreached ? "#ef4444" : "#0ea5e9"}
-                    strokeWidth={isSelected ? 3.0 : isBreached ? 2.0 : 1.0}
-                    strokeDasharray={isBreached ? "6 3" : undefined}
+                    stroke={isBreached ? "#EF4444" : "#38BDF8"}
+                    strokeWidth={isSelected ? 3.0 : 1.5}
+                    strokeDasharray={isBreached ? "5 3" : undefined}
                   />
                   <path
                     d={pathStr}
-                    fill={isBreached ? "rgba(239, 68, 68, 0.16)" : "rgba(14, 165, 233, 0.08)"}
+                    fill={isBreached ? "rgba(239, 68, 68, 0.22)" : "rgba(56, 189, 248, 0.10)"}
                   />
                 </g>
               );
             })}
 
-        {/* LAYER 2: Bhoonidhi SAR Flood Polygons (EOS-04 Extracted Inundation) */}
+        {/* 4. LAYER: Flooded Areas (Prominent Red Inundation Zone) */}
         {activeLayers.bhoonidhi_flood &&
           featureList
             .filter((f) => f.properties.layer === "bhoonidhi_flood")
             .map((f) => {
               const pathStr = polygonToPath(f.geometry.coordinates);
-              const isDeep = (f.properties.water_depth_m || 0) >= 0.8;
               const isSelected = selectedItem?.id === f.id;
 
               return (
@@ -287,19 +323,23 @@ export default function CommandMap({
                 >
                   <path
                     d={pathStr}
-                    fill="url(#flood-hatch)"
-                    stroke={isDeep ? "#dc2626" : "#2563eb"}
-                    strokeWidth={isSelected ? 3.2 : isDeep ? 2.4 : 1.4}
+                    fill="rgba(239, 68, 68, 0.38)"
+                    stroke="#EF4444"
+                    strokeWidth={isSelected ? 3.2 : 2.0}
                   />
                   <path
                     d={pathStr}
-                    fill={isDeep ? "rgba(220, 38, 38, 0.25)" : "rgba(37, 99, 235, 0.16)"}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="0.8"
+                    strokeDasharray="4 2"
+                    opacity="0.6"
                   />
                 </g>
               );
             })}
 
-        {/* LAYER 3: VEDAS Roads (Submerged vs Passable) */}
+        {/* 5. LAYER: Road Network (Green Open vs Red Blocked) */}
         {activeLayers.vedas_roads &&
           featureList
             .filter((f) => f.properties.layer === "vedas_roads")
@@ -316,28 +356,28 @@ export default function CommandMap({
                   onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setHoveredItem(null)}
                 >
-                  {/* Road Casing */}
                   <path
                     d={pathStr}
                     fill="none"
-                    stroke="#020617"
-                    strokeWidth={isSelected ? 8 : 5}
+                    stroke={isSubmerged ? "#EF4444" : "#475569"}
+                    strokeWidth={isSelected ? 5.0 : isSubmerged ? 4.0 : 2.5}
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                  {/* Road Centerline */}
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke={isSubmerged ? "#ef4444" : "#38bdf8"}
-                    strokeWidth={isSubmerged ? 2.6 : 2.0}
-                    strokeDasharray={isSubmerged ? "5 3" : undefined}
-                    strokeLinecap="round"
-                  />
+                  {isSubmerged && (
+                    <path
+                      d={pathStr}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.2"
+                      strokeDasharray="3 3"
+                    />
+                  )}
                 </g>
               );
             })}
 
-        {/* LAYER 4: VEDAS Dry Evacuation Corridors (High Elevation Cartosat DEM) */}
+        {/* 6. LAYER: Safe Evacuation Roads (>510m AMSL Safe High Ground) */}
         {activeLayers.vedas_corridors &&
           featureList
             .filter((f) => f.properties.layer === "vedas_corridors")
@@ -353,469 +393,241 @@ export default function CommandMap({
                   onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setHoveredItem(null)}
                 >
+                  {/* Glowing Safe Green Highway */}
                   <path
                     d={pathStr}
                     fill="none"
-                    stroke="#020617"
-                    strokeWidth={isSelected ? 9 : 6}
+                    stroke="#10B981"
+                    strokeWidth={isSelected ? 7.0 : 5.0}
+                    strokeOpacity="0.45"
                     strokeLinecap="round"
                   />
                   <path
                     d={pathStr}
                     fill="none"
-                    stroke="#10b981"
-                    strokeWidth={isSelected ? 3.8 : 2.6}
+                    stroke="#34D399"
+                    strokeWidth="2.5"
                     strokeLinecap="round"
-                  />
-                  {/* Smooth Directional Flow Animation on Dry Corridors */}
-                  <path
-                    d={pathStr}
-                    fill="none"
-                    stroke="#a7f3d0"
-                    strokeWidth={2}
-                    className="anim-flow-corridor pointer-events-none opacity-80"
                   />
                 </g>
               );
             })}
 
-        {/* Active Broadcast Evacuation Dispatches */}
-        {dispatches.map((disp) => {
-          if (disp.evacuation_corridor?.coordinates) {
-            const pathStr = lineToPath(disp.evacuation_corridor.coordinates);
-            return (
-              <g key={disp.dispatch_id}>
-                <path
-                  d={pathStr}
-                  fill="none"
-                  stroke="#0891b2"
-                  strokeWidth={4.5}
-                  strokeLinecap="round"
-                />
-                <path
-                  d={pathStr}
-                  fill="none"
-                  stroke="#67e8f9"
-                  strokeWidth={2.5}
-                  className="anim-flow-corridor"
-                />
-              </g>
-            );
-          }
-          return null;
-        })}
-
-        {/* LAYER 6: Tactical LoRa 865 MHz Mesh Relay Hops */}
-        {activeLayers.sos_mesh &&
-          sosPackets.map((sos) => {
-            const [sosX, sosY] = project(sos.position.lng, sos.position.lat);
-            const [baseX, baseY] = project(77.0160, 23.0805); // VIT Shelter / Command Base
-            return (
-              <g key={`mesh-group-${sos.sos_id}`}>
-                {/* Static Relay Guide Line */}
-                <line
-                  x1={sosX}
-                  y1={sosY}
-                  x2={baseX}
-                  y2={baseY}
-                  stroke="#78350f"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 4"
-                />
-                {/* Streaming RF Pulse Animation */}
-                <line
-                  x1={sosX}
-                  y1={sosY}
-                  x2={baseX}
-                  y2={baseY}
-                  stroke="#fbbf24"
-                  strokeWidth={1.8}
-                  className="anim-mesh-stream"
-                />
-              </g>
-            );
-          })}
-
-        {/* LAYER 5: Bhuvan Infrastructure Cadastral Asset Markers */}
+        {/* 7. LAYER: Shelters & Relief Camps (Hospitals, Relief Camps) */}
         {activeLayers.bhuvan_assets &&
           featureList
             .filter((f) => f.properties.layer === "bhuvan_assets")
             .map((f) => {
-              const [x, y] = project(f.geometry.coordinates[0], f.geometry.coordinates[1]);
-              const assetType = f.properties.asset_type;
+              const [px, py] = project(f.geometry.coordinates[0], f.geometry.coordinates[1]);
+              const isShelter = f.properties.asset_type === "SHELTER";
               const isSelected = selectedItem?.id === f.id;
 
               return (
                 <g
-                  key={f.id || `asset-${x}-${y}`}
-                  transform={`translate(${x}, ${y})`}
-                  className="cursor-pointer transition-transform hover:scale-125"
+                  key={f.id || "bhuvan-asset"}
+                  transform={`translate(${px}, ${py})`}
+                  className="cursor-pointer"
                   onClick={() => handleFeatureClick(f)}
                   onMouseEnter={(e) => setHoveredItem({ item: f, x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setHoveredItem(null)}
                 >
-                  {/* Selection Reticle */}
-                  {isSelected && (
-                    <circle r={15} fill="none" stroke="#38bdf8" strokeWidth={1.8} strokeDasharray="3 2" />
-                  )}
-
-                  {/* Marker Body */}
-                  <rect
-                    x="-6"
-                    y="-6"
-                    width="12"
-                    height="12"
-                    fill={
-                      assetType === "SHELTER"
-                        ? "#059669"
-                        : assetType === "HOSPITAL"
-                        ? "#dc2626"
-                        : assetType === "RESERVOIR"
-                        ? "#0284c7"
-                        : "#475569"
-                    }
-                    stroke="#ffffff"
-                    strokeWidth="1.2"
+                  <circle
+                    r={isSelected ? 10 : 8}
+                    fill={isShelter ? "#10B981" : "#A78BFA"}
+                    stroke="#FFFFFF"
+                    strokeWidth="1.8"
+                    className="shadow-sm"
                   />
-
-                  {/* Label */}
                   <text
-                    x="9"
+                    x="12"
                     y="3"
-                    fill="#cbd5e1"
+                    fill="#F1F5F9"
                     fontSize="9"
-                    fontFamily="monospace"
-                    className="pointer-events-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+                    fontWeight="bold"
+                    className="pointer-events-none font-sans drop-shadow"
                   >
-                    {f.properties.title.split("(")[0].trim().slice(0, 16)}
+                    {f.properties.title?.split("(")[0]}
                   </text>
                 </g>
               );
             })}
 
-        {/* Live SOS Distress Beacons */}
+        {/* 8. LAYER: Active SOS Help Signals */}
         {activeLayers.sos_mesh &&
           sosPackets.map((sos) => {
-            const [x, y] = project(sos.position.lng, sos.position.lat);
+            const [px, py] = project(sos.position.lng, sos.position.lat);
             const isCrit = sos.triage.severity === "CRITICAL";
             const isSelected = selectedItem?.sos_id === sos.sos_id;
 
             return (
               <g
                 key={sos.sos_id}
-                transform={`translate(${x}, ${y})`}
-                className="cursor-pointer transition-transform hover:scale-125"
+                transform={`translate(${px}, ${py})`}
+                className="cursor-pointer"
                 onClick={() => handleFeatureClick(sos)}
                 onMouseEnter={(e) => setHoveredItem({ item: sos, x: e.clientX, y: e.clientY })}
                 onMouseLeave={() => setHoveredItem(null)}
               >
-                {/* 60fps Radar Beacon Ripple */}
-                <circle
-                  cx={0}
-                  cy={0}
-                  r={isCrit ? 16 : 12}
-                  fill="none"
-                  stroke={isCrit ? "#ef4444" : "#f59e0b"}
-                  strokeWidth={1.5}
-                  className="anim-beacon-ring pointer-events-none"
-                />
-
-                {isSelected && (
-                  <circle r={18} fill="none" stroke="#38bdf8" strokeWidth={1.8} strokeDasharray="3 2" />
-                )}
-
-                {/* Tactile Beacon Marker */}
-                <polygon
-                  points="0,-8 7,5 -7,5"
-                  fill={isCrit ? "#ef4444" : "#f59e0b"}
-                  stroke="#ffffff"
-                  strokeWidth="1.2"
-                />
-
+                <circle r="14" fill={isCrit ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"} className="animate-ping" />
+                <circle r={isSelected ? 9 : 7} fill={isCrit ? "#EF4444" : "#F59E0B"} stroke="#FFFFFF" strokeWidth="2" />
                 <text
-                  x="10"
-                  y="2"
-                  fill="#fca5a5"
+                  x="12"
+                  y="3"
+                  fill={isCrit ? "#FCA5A5" : "#FDE68A"}
                   fontSize="9"
-                  fontFamily="monospace"
                   fontWeight="bold"
-                  className="pointer-events-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+                  className="pointer-events-none font-sans drop-shadow"
                 >
-                  {sos.sos_id} ({sos.triage.headcount}p)
+                  SOS: {sos.triage.headcount} people
                 </text>
               </g>
             );
           })}
+
+        {/* 9. Prominent Epicenter Alert Pin & Friendly Callout Card matching screenshot */}
+        <g transform={`translate(${epicenterX}, ${epicenterY})`} className="cursor-pointer" onClick={() => {
+          const flood = featureList.find((f) => f.properties.layer === "bhoonidhi_flood") || featureList[0];
+          handleFeatureClick(flood);
+        }}>
+          {/* Animated concentric ripple */}
+          <circle r="24" fill="none" stroke="#EF4444" strokeWidth="1.5" className="animate-ping" opacity="0.5" />
+
+          {/* Red Alert Circle with Exclamation */}
+          <circle r="11" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2" className="shadow-lg" />
+          <polygon points="-4.5,4.5 4.5,4.5 0,-4.5" fill="#FFFFFF" />
+          <text x="0" y="3.5" fill="#EF4444" fontSize="7" fontWeight="bold" textAnchor="middle">!</text>
+
+          {/* Blue Pin next to it */}
+          <g transform="translate(14, 2)">
+            <circle r="7" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="2" className="shadow-md" />
+            <circle r="2.5" fill="#FFFFFF" />
+          </g>
+
+          {/* Floating Dark Alert Card Callout */}
+          <g transform="translate(18, -48)">
+            <rect
+              x="0"
+              y="0"
+              width="128"
+              height="42"
+              rx="8"
+              fill="#0F172A"
+              stroke="#1E293B"
+              strokeWidth="1.5"
+              className="shadow-2xl"
+              opacity="0.95"
+            />
+            {/* Pointer stem */}
+            <polygon points="-6,26 0,21 0,31" fill="#0F172A" stroke="#1E293B" strokeWidth="1" />
+            {/* Red Alert Icon in Callout */}
+            <g transform="translate(10, 15)">
+              <polygon points="0,11 12,11 6,1" fill="#EF4444" />
+              <text x="6" y="9.5" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">!</text>
+            </g>
+            {/* Clean Non-Tech Text Labels matching reference screenshot */}
+            <text x="28" y="18" fill="#FFFFFF" fontSize="11" fontWeight="bold" fontFamily="sans-serif">
+              Flood Alert
+            </text>
+            <text x="28" y="31" fill="#94A3B8" fontSize="9" fontWeight="medium" fontFamily="sans-serif">
+              High Severity
+            </text>
+          </g>
+        </g>
       </svg>
 
-      {/* Basin Coordinates & Datum Indicator (Top Left) */}
-      <div className="absolute top-3 left-3 pointer-events-none bg-slate-950/90 border border-slate-800 px-3 py-1.5 rounded text-[11px] font-mono text-slate-300 flex items-center space-x-2">
-        <Compass className="w-3.5 h-3.5 text-cyan-400" />
-        <span>KOTHRI-SEHORE-BHOPAL BASIN</span>
-        <span className="text-slate-500">|</span>
-        <span className="tabular-data text-slate-400">23.18°N 77.20°E · WGS84</span>
-      </div>
-
-      {/* Floating Tactical Hover Tooltip */}
+      {/* Floating Hover Tooltip (Friendly Everyday English) */}
       {hoveredItem && (
         <div
-          className="absolute z-30 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-2"
-          style={{
-            left: Math.min(Math.max(hoveredItem.x - (containerRef.current?.getBoundingClientRect().left || 0), 90), viewBox.width - 90),
-            top: Math.max(hoveredItem.y - (containerRef.current?.getBoundingClientRect().top || 0) - 8, 28),
-          }}
+          className="pointer-events-none fixed z-50 bg-[#0F172A] border border-[#1E293B] rounded-lg px-2.5 py-1.5 shadow-xl text-xs font-sans text-white transform -translate-x-1/2 -translate-y-12 animate-fadeIn"
+          style={{ left: hoveredItem.x, top: hoveredItem.y }}
         >
-          <div className="bg-[#0b1120] border border-slate-700 p-2 rounded shadow-xl text-xs space-y-1 font-mono max-w-xs animate-fadeIn">
-            {hoveredItem.item.sos_id ? (
-              <div>
-                <div className="flex justify-between items-center text-rose-400 font-bold text-[11px]">
-                  <span>{hoveredItem.item.sos_id}</span>
-                  <span className="text-[10px] px-1 bg-rose-950 border border-rose-800 rounded">{hoveredItem.item.triage.severity}</span>
-                </div>
-                <div className="text-slate-300 text-[10px] font-sans mt-0.5 line-clamp-1">{hoveredItem.item.triage.note}</div>
-                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-800/80">
-                  <span>Headcount: {hoveredItem.item.triage.headcount}</span>
-                  <span>Mesh: {hoveredItem.item.mesh.hop_count} hops</span>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="flex justify-between items-center text-slate-200 font-bold text-[11px]">
-                  <span className="truncate">{hoveredItem.item.properties?.title}</span>
-                  <span className="text-[9px] uppercase px-1 bg-slate-800 text-cyan-400 rounded ml-1">
-                    {hoveredItem.item.properties?.layer?.replace("_", " ")}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400 font-sans mt-0.5 line-clamp-1">
-                  {hoveredItem.item.properties?.recommended_action}
-                </div>
-                <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-800/80">
-                  {hoveredItem.item.properties?.rainfall_mm_hr > 0 && (
-                    <span>Rain: {hoveredItem.item.properties.rainfall_mm_hr} mm/h</span>
-                  )}
-                  {hoveredItem.item.properties?.water_depth_m > 0 && (
-                    <span className="text-rose-400">Depth: {hoveredItem.item.properties.water_depth_m}m</span>
-                  )}
-                  {hoveredItem.item.properties?.elevation_m && (
-                    <span>Elev: {hoveredItem.item.properties.elevation_m}m</span>
-                  )}
-                </div>
-              </div>
-            )}
+          <div className="font-bold text-[11px] text-white">
+            {hoveredItem.item.sos_id
+              ? `SOS Help Signal: ${hoveredItem.item.triage?.headcount} people trapped`
+              : hoveredItem.item.properties?.title}
+          </div>
+          <div className="text-[10px] text-slate-300">
+            {hoveredItem.item.sos_id
+              ? `Needs: ${hoveredItem.item.triage?.needs?.join(", ")}`
+              : hoveredItem.item.properties?.road_status === "SUBMERGED"
+              ? "🔴 Road Blocked: Underwater"
+              : hoveredItem.item.properties?.road_status === "CORRIDOR"
+              ? "🟢 Safe Evacuation Highway (Dry & Open)"
+              : hoveredItem.item.properties?.asset_type === "SHELTER"
+              ? "🏥 Safe Relief Camp (Food & Beds)"
+              : "Click to see details & safety actions"}
           </div>
         </div>
       )}
 
-      {/* Floating Selected GIS Feature Attribute Inspector Card */}
-      {selectedItem && (
-        <div className="absolute top-3 right-3 z-20 w-80 max-w-[calc(100%-2rem)] bg-[#0b1120] border border-slate-700 rounded-lg p-3 shadow-2xl text-xs space-y-2 animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-            <span className="text-[10px] font-mono font-bold tracking-wider text-cyan-400 uppercase">
-              {selectedItem.sos_id ? "DISTRESS PACKET TELEMETRY" : "GIS ATTRIBUTE INSPECTION"}
-            </span>
-            <button
-              onClick={() => onSelectFeature?.(null)}
-              className="text-slate-400 hover:text-white text-xs px-1"
-            >
-              ✕
-            </button>
-          </div>
-
-          {selectedItem.sos_id ? (
-            <div className="space-y-1.5 font-mono text-[11px]">
-              <div className="flex justify-between items-center font-bold">
-                <span className="text-white">{selectedItem.sos_id}</span>
-                <span className={`px-1.5 py-0.2 rounded text-[10px] ${
-                  selectedItem.triage.severity === "CRITICAL" ? "bg-rose-950 text-rose-300 border border-rose-800" : "bg-amber-950 text-amber-300"
-                }`}>
-                  {selectedItem.triage.severity}
-                </span>
-              </div>
-              <p className="text-slate-300 font-sans text-xs bg-slate-900/80 p-2 rounded border border-slate-800">
-                &quot;{selectedItem.triage.note}&quot;
-              </p>
-              <div className="grid grid-cols-2 gap-1 text-slate-400 text-[10px] pt-1">
-                <div>Pax: <strong className="text-white">{selectedItem.triage.headcount}</strong></div>
-                <div>NavIC: <strong className="text-emerald-400">{selectedItem.position.navic_band}</strong></div>
-                <div>Mesh: <strong className="text-amber-400">{selectedItem.mesh.transport}</strong></div>
-                <div>Hops: <strong className="text-white">{selectedItem.mesh.hop_count}</strong></div>
-              </div>
-              <div className="text-[10px] text-slate-400 pt-1">
-                Needs: {selectedItem.triage.needs.join(", ")}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1.5 text-xs">
-              <div className="font-bold text-white text-[13px]">{selectedItem.properties?.title}</div>
-              <div className="flex gap-1.5 text-[10px] font-mono">
-                <span className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700">
-                  {selectedItem.properties?.layer?.replace("_", " ").toUpperCase()}
-                </span>
-                <span className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700">
-                  SEV: {selectedItem.properties?.severity}
-                </span>
-                {selectedItem.properties?.road_status && selectedItem.properties.road_status !== "NA" && (
-                  <span className={`px-1.5 py-0.5 rounded font-bold ${
-                    selectedItem.properties.road_status === "SUBMERGED"
-                      ? "bg-rose-900/60 text-rose-300 border border-rose-700"
-                      : "bg-emerald-900/60 text-emerald-300 border border-emerald-700"
-                  }`}>
-                    {selectedItem.properties.road_status}
-                  </span>
-                )}
-              </div>
-
-              <div className="bg-slate-900/80 p-2 rounded border border-slate-800 text-[11px] text-slate-300">
-                {selectedItem.properties?.recommended_action}
-              </div>
-
-              <table className="w-full data-table text-[10px] font-mono">
-                <tbody>
-                  {selectedItem.properties?.elevation_m && (
-                    <tr>
-                      <td className="text-slate-400">Elevation:</td>
-                      <td className="text-right text-white tabular-data">{selectedItem.properties.elevation_m}m AMSL</td>
-                    </tr>
-                  )}
-                  {selectedItem.properties?.water_depth_m > 0 && (
-                    <tr>
-                      <td className="text-slate-400">Flood Depth:</td>
-                      <td className="text-right text-rose-400 tabular-data">{selectedItem.properties.water_depth_m}m</td>
-                    </tr>
-                  )}
-                  {selectedItem.properties?.rainfall_mm_hr > 0 && (
-                    <tr>
-                      <td className="text-slate-400">Rain Intensity:</td>
-                      <td className="text-right text-cyan-400 tabular-data">{selectedItem.properties.rainfall_mm_hr} mm/h</td>
-                    </tr>
-                  )}
-                  {selectedItem.properties?.capacity && (
-                    <tr>
-                      <td className="text-slate-400">Shelter Capacity:</td>
-                      <td className="text-right text-emerald-400 tabular-data">{selectedItem.properties.capacity} persons</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-
-              {/* Action Button: Broadcast Ridge Corridor */}
-              {(selectedItem.properties?.layer === "vedas_corridors" || selectedItem.properties?.road_status === "CORRIDOR" || selectedItem.properties?.layer === "bhoonidhi_flood") && (
-                <button
-                  onClick={() => onDispatchCorridor?.(selectedItem)}
-                  className="w-full mt-2 py-1 px-2.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-mono text-xs font-semibold flex items-center justify-center space-x-1.5 transition"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Broadcast Vector to Field Mesh</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tactical Map Zoom Controls (Bottom Right) */}
-      <div className="absolute bottom-3 right-3 flex flex-col space-y-1 bg-[#0b1120] border border-slate-800 p-1 rounded z-10 shadow-lg">
+      {/* Top Right: Satellite / Map Mode Toggle matching screenshot */}
+      <div className="absolute top-3.5 right-3.5 z-20 flex items-center bg-[#0B1322]/90 p-1 rounded-xl border border-[#1E293B] shadow-lg text-xs font-medium backdrop-blur-md">
         <button
-          onClick={() => setZoom((z) => Math.min(z + 0.25, 3.0))}
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Zoom In"
+          onClick={() => setMapViewMode("satellite")}
+          className={`px-3.5 py-1 rounded-lg transition text-xs ${
+            mapViewMode === "satellite"
+              ? "bg-blue-600 text-white font-semibold shadow-sm"
+              : "text-slate-400 hover:text-white"
+          }`}
         >
-          <Plus className="w-3.5 h-3.5" />
+          Satellite
         </button>
         <button
-          onClick={() => setZoom((z) => Math.max(z - 0.25, 0.6))}
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Zoom Out"
+          onClick={() => setMapViewMode("map")}
+          className={`px-3.5 py-1 rounded-lg transition text-xs ${
+            mapViewMode === "map"
+              ? "bg-blue-600 text-white font-semibold shadow-sm"
+              : "text-slate-400 hover:text-white"
+          }`}
         >
-          <Minus className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={resetView}
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Reset Extents"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
+          Map
         </button>
       </div>
 
-      {/* Layer Control Bar (Bottom Left) */}
-      <div className="absolute bottom-3 left-3 flex items-center space-x-1.5 bg-[#0b1120]/95 border border-slate-800 px-2.5 py-1.5 rounded text-[11px] font-mono z-10 overflow-x-auto max-w-[calc(100%-6rem)]">
-        <span className="text-[9px] uppercase tracking-wider text-slate-500 mr-1 flex-shrink-0 font-bold">
-          LAYERS:
-        </span>
-
+      {/* Top Left: Floating Vertical Zoom & Navigation Controls */}
+      <div className="absolute top-3 left-3 z-20 flex flex-col bg-[#0F172A]/90 p-1 rounded-xl border border-[#1E293B] shadow-lg text-slate-300 backdrop-blur-md">
         <button
-          onClick={() => onToggleLayer("mosdac_rain")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.mosdac_rain
-              ? "bg-cyan-950/70 text-cyan-300 border border-cyan-700/60 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
+          onClick={() => setZoom((z) => Math.min(z + 0.25, 3.0))}
+          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
+          title="Zoom In"
+          aria-label="Zoom In"
         >
-          <CloudRain className="w-3 h-3" />
-          <span>MOSDAC</span>
+          <Plus className="w-4 h-4" />
         </button>
-
+        <button
+          onClick={() => setZoom((z) => Math.max(z - 0.25, 0.75))}
+          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
+          title="Zoom Out"
+          aria-label="Zoom Out"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+        <div className="h-px bg-[#1E293B] my-0.5" />
+        <button
+          onClick={resetView}
+          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
+          title="Center Map on Affected Region"
+          aria-label="Recenter"
+        >
+          <Crosshair className="w-4 h-4" />
+        </button>
         <button
           onClick={() => onToggleLayer("bhoonidhi_flood")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.bhoonidhi_flood
-              ? "bg-blue-950/70 text-blue-300 border border-blue-700/60 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
+          className="p-1.5 hover:text-white hover:bg-[#1E293B] rounded-lg transition"
+          title="Toggle Flood Water On/Off"
+          aria-label="Toggle Flood Water"
         >
-          <Waves className="w-3 h-3" />
-          <span>BHOONIDHI SAR</span>
+          <Layers className="w-4 h-4" />
         </button>
+      </div>
 
-        <button
-          onClick={() => onToggleLayer("vedas_roads")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.vedas_roads
-              ? "bg-rose-950/70 text-rose-300 border border-rose-700/60 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
-        >
-          <Route className="w-3 h-3" />
-          <span>ROADS</span>
-        </button>
-
-        <button
-          onClick={() => onToggleLayer("vedas_corridors")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.vedas_corridors
-              ? "bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
-        >
-          <ShieldCheck className="w-3 h-3" />
-          <span>DRY CORRIDORS</span>
-        </button>
-
-        <button
-          onClick={() => onToggleLayer("bhuvan_assets")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.bhuvan_assets
-              ? "bg-slate-800 text-slate-200 border border-slate-600 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
-        >
-          <Building2 className="w-3 h-3" />
-          <span>BHUVAN ASSETS</span>
-        </button>
-
-        <button
-          onClick={() => onToggleLayer("sos_mesh")}
-          className={`flex items-center space-x-1 px-2 py-0.5 rounded transition flex-shrink-0 ${
-            activeLayers.sos_mesh
-              ? "bg-amber-950/70 text-amber-300 border border-amber-700/60 font-semibold"
-              : "text-slate-500 hover:text-slate-300 border border-transparent"
-          }`}
-        >
-          <Radio className="w-3 h-3" />
-          <span>LORA 865 MHz</span>
-        </button>
+      {/* Bottom Left: Scale Bar (10 km) matching screenshot */}
+      <div className="absolute bottom-3.5 left-3.5 z-10 flex items-center space-x-2 bg-[#0B1322]/85 px-2.5 py-1 rounded-lg border border-[#1E293B] text-[10px] text-slate-300 font-sans backdrop-blur-md">
+        <span>10 km</span>
+        <div className="w-8 h-0.5 bg-white/90 rounded-full" />
       </div>
     </div>
   );
 }
+
+export default CommandMap;

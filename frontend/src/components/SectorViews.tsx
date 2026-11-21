@@ -6,27 +6,25 @@ import {
   Droplets,
   AlertTriangle,
   CheckCircle2,
-  TrendingUp,
   ShieldCheck,
   Building,
   Zap,
-  Info,
-  Layers,
-  Activity,
   ArrowUpRight,
-  Database,
-  Compass,
 } from "lucide-react";
 import { TerraPulseStateResponse } from "@/lib/terrapulseClient";
+import { SurveyCard } from "./primitives/SurveyCard";
+import { StatusChip } from "./primitives/StatusChip";
+import { SectionLabel } from "./primitives/SectionLabel";
+import { BudgetMeter } from "./primitives/BudgetMeter";
 
-interface SectorViewsProps {
+export interface SectorViewsProps {
   state: TerraPulseStateResponse | null;
   activeSector: "agri" | "audit";
   onTriggerClaim?: (blockName: string) => void;
   onDispatchCorridor?: (zone: string) => void;
 }
 
-export default function SectorViews({
+export function SectorViews({
   state,
   activeSector,
   onTriggerClaim,
@@ -42,7 +40,7 @@ export default function SectorViews({
 
   const handleClaim = (blockId: string, blockName: string, farmerCount: number) => {
     setClaimStatus((prev) => ({ ...prev, [blockId]: true }));
-    setToastMessage(`PMFBY Parametric claim batch verified for ${farmerCount} cadastral parcels in ${blockName}.`);
+    setToastMessage(`PMFBY Parametric claim verified for ${farmerCount} cadastral parcels in ${blockName}.`);
     setTimeout(() => setToastMessage(null), 3500);
     onTriggerClaim?.(blockName);
   };
@@ -60,7 +58,7 @@ export default function SectorViews({
         ndvi: isRainBreached ? 0.42 : 0.74,
         ndviStatus: isRainBreached ? "Waterlogged / Root Hypoxia Alert" : "Healthy Photosynthetic Canopy",
         soilMoisture: isRainBreached ? "+44% (Saturated Surface Runoff)" : "+14% (Field Capacity)",
-        risk: isRainBreached ? "CRITICAL" : "LOW",
+        risk: isRainBreached ? "CRITICAL" : "NORMAL",
         action: isRainBreached
           ? "Open contour ditches along 488m elevation. Muster livestock from Sevan riverbank to VIT High Grounds."
           : "Maintain scheduled drainage culvert clearing.",
@@ -75,7 +73,7 @@ export default function SectorViews({
         ndvi: isRoadSubmerged ? 0.38 : 0.69,
         ndviStatus: isRoadSubmerged ? "Riparian Inundation Detected" : "Nominal Vegetative Index",
         soilMoisture: isRoadSubmerged ? "+52% (Severe Waterlogging)" : "+18% (Adequate)",
-        risk: isRoadSubmerged ? "HIGH" : "LOW",
+        risk: isRoadSubmerged ? "WARNING" : "NORMAL",
         action: isRoadSubmerged
           ? "Sevan River causeway overflow imminent. Suspend agricultural transport over unpaved cart tracks."
           : "Normal seasonal reservoir irrigation flow.",
@@ -90,7 +88,7 @@ export default function SectorViews({
         ndvi: 0.71,
         ndviStatus: "Stable Vegetative Canopy",
         soilMoisture: "+21% (Moist / Field Capacity)",
-        risk: "MODERATE",
+        risk: "WATCH",
         action: "Monitor reservoir discharge channels from Kerwa spillway. Clear field boundary bunds.",
       },
     ];
@@ -99,22 +97,19 @@ export default function SectorViews({
 
     return (
       <div className="flex-1 p-3 flex flex-col space-y-3 overflow-y-auto font-mono text-xs">
-        {/* Header Attribution */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800 flex-shrink-0">
-          <div>
-            <span className="font-bold text-white text-[11px] block">
-              VEDAS & MOSDAC CROP STRESS AUDIT
-            </span>
-            <span className="text-[10px] text-slate-400">
-              Phenology, NDVI & PMFBY Parametric Settlement
-            </span>
-          </div>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-            isRainBreached ? "bg-rose-950 text-rose-300 border-rose-800" : "bg-emerald-950 text-emerald-300 border-emerald-800"
-          }`}>
-            RAIN: {kpis?.max_rainfall_mm_hr || 0} / 15.0 mm/h
-          </span>
-        </div>
+        {/* Section Header */}
+        <SectionLabel
+          title="VEDAS & MOSDAC CROP STRESS"
+          portal="SAC AHMEDABAD"
+          portalColor="text-saffron-400"
+          rightAction={
+            <StatusChip
+              variant={isRainBreached ? "critical" : "normal"}
+              size="sm"
+              label={`RAIN: ${kpis?.max_rainfall_mm_hr || 0} / 15 mm/h`}
+            />
+          }
+        />
 
         {/* Catchment Block Selector */}
         <div className="grid grid-cols-3 gap-1.5 flex-shrink-0">
@@ -122,19 +117,29 @@ export default function SectorViews({
             <button
               key={blk.id}
               onClick={() => setSelectedBlock(blk.id)}
-              className={`p-2 rounded border text-left transition ${
+              className={`p-2 rounded border text-left transition focus-visible:ring-1 focus-visible:ring-saffron-500 ${
                 selectedBlock === blk.id
-                  ? "bg-slate-800 text-white border-cyan-500/60"
-                  : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white"
+                  ? "bg-ink-800 text-bone-50 border-saffron-500/70 shadow-sm"
+                  : "bg-ink-950/70 border-ink-800 text-bone-400 hover:text-bone-50 hover:bg-ink-900"
               }`}
             >
               <div className="flex items-center justify-between text-[10px] font-bold">
                 <span className="truncate">{blk.name.split(" ")[0]}</span>
-                <span className={blk.risk === "CRITICAL" ? "text-rose-400" : blk.risk === "HIGH" ? "text-amber-400" : "text-emerald-400"}>
-                  {blk.risk}
-                </span>
+                <StatusChip
+                  variant={
+                    blk.risk === "CRITICAL"
+                      ? "critical"
+                      : blk.risk === "WARNING"
+                      ? "warning"
+                      : blk.risk === "WATCH"
+                      ? "watch"
+                      : "normal"
+                  }
+                  size="sm"
+                  label={blk.risk}
+                />
               </div>
-              <div className="text-[9px] text-slate-400 mt-1 flex justify-between">
+              <div className="text-[9px] text-bone-500 mt-1 flex justify-between tabular-nums">
                 <span>NDVI {blk.ndvi}</span>
                 <span>{blk.farmers}p</span>
               </div>
@@ -142,75 +147,79 @@ export default function SectorViews({
           ))}
         </div>
 
-        {/* Selected Block Metrics Table */}
-        <div className="bg-[#0b1120] border border-slate-800 rounded p-2.5 space-y-2">
-          <div className="flex justify-between items-center text-slate-300 font-bold text-[11px]">
+        {/* Selected Block Metrics Panel */}
+        <SurveyCard ticks={true} className="p-2.5 space-y-2">
+          <div className="flex justify-between items-center text-bone-50 font-bold text-[11px]">
             <span>{currentBlock.name}</span>
-            <span className="text-[10px] text-slate-400">{currentBlock.latLng}</span>
+            <span className="text-[10px] text-bone-500 tabular-nums">{currentBlock.latLng}</span>
           </div>
 
-          <table className="w-full data-table text-[10px]">
+          <table className="w-full text-[10px] font-mono border-collapse">
             <tbody>
-              <tr>
-                <td className="text-slate-400">Canopy Vigor (NDVI):</td>
-                <td className="text-right text-white tabular-data font-bold">{currentBlock.ndvi}</td>
+              <tr className="border-b border-ink-800">
+                <td className="text-bone-500 py-1">Canopy Vigor (NDVI):</td>
+                <td className="text-right text-bone-50 tabular-nums font-bold py-1">{currentBlock.ndvi}</td>
+              </tr>
+              <tr className="border-b border-ink-800">
+                <td className="text-bone-500 py-1">Canopy Assessment:</td>
+                <td className="text-right text-bone-300 py-1 font-sans">{currentBlock.ndviStatus}</td>
+              </tr>
+              <tr className="border-b border-ink-800">
+                <td className="text-bone-500 py-1">Soil Moisture Anomaly:</td>
+                <td className="text-right text-mosdac tabular-nums py-1">{currentBlock.soilMoisture}</td>
+              </tr>
+              <tr className="border-b border-ink-800">
+                <td className="text-bone-500 py-1">Elevation Profile:</td>
+                <td className="text-right text-bone-300 tabular-nums py-1">{currentBlock.elevation}</td>
               </tr>
               <tr>
-                <td className="text-slate-400">Canopy Assessment:</td>
-                <td className="text-right text-slate-300">{currentBlock.ndviStatus}</td>
-              </tr>
-              <tr>
-                <td className="text-slate-400">Soil Moisture Anomaly:</td>
-                <td className="text-right text-cyan-400 tabular-data">{currentBlock.soilMoisture}</td>
-              </tr>
-              <tr>
-                <td className="text-slate-400">Elevation Profile:</td>
-                <td className="text-right text-slate-300 tabular-data">{currentBlock.elevation}</td>
-              </tr>
-              <tr>
-                <td className="text-slate-400">Standing Crops:</td>
-                <td className="text-right text-amber-300 font-sans">{currentBlock.crops}</td>
+                <td className="text-bone-500 py-1">Standing Crops:</td>
+                <td className="text-right text-saffron-400 font-sans py-1">{currentBlock.crops}</td>
               </tr>
             </tbody>
           </table>
 
           {/* Operational Advisory */}
-          <div className="bg-slate-900/90 p-2 rounded border border-slate-800 text-[10px] text-slate-300 font-sans">
-            <strong className="text-amber-400 font-mono block mb-0.5">VEDAS FIELD DIRECTIVE:</strong>
+          <div className="bg-ink-950/80 p-2 rounded border border-ink-700/60 text-[10px] text-bone-300 font-sans">
+            <strong className="text-saffron-400 font-mono block mb-0.5 uppercase tracking-survey text-[9px]">
+              VEDAS FIELD DIRECTIVE:
+            </strong>
             {currentBlock.action}
           </div>
 
           {/* PMFBY Parametric Crop Inundation Trigger Box */}
-          <div className="border border-slate-800 bg-slate-900/50 p-2.5 rounded space-y-2">
+          <div className="border border-ink-700/80 bg-ink-950/50 p-2.5 rounded-md space-y-2">
             <div className="flex justify-between items-center text-[10px]">
-              <span className="font-bold text-slate-200">PMFBY PARAMETRIC TRIGGER</span>
-              <span className="text-emerald-400">SAR Cadastral Verification</span>
+              <span className="font-bold text-bone-50 uppercase tracking-survey">
+                PMFBY PARAMETRIC TRIGGER
+              </span>
+              <span className="text-emerald-400 text-[9px]">SAR Verification</span>
             </div>
-            <p className="text-[10px] text-slate-400 font-sans leading-tight">
-              Bhoonidhi SAR flood extents intersect cadastral boundaries to verify crop loss without physical field surveyor visits.
+            <p className="text-[10px] text-bone-400 font-sans leading-tight">
+              Bhoonidhi EOS-04 SAR flood extents intersect cadastral boundaries to verify crop inundation loss without requiring manual surveyor field visits.
             </p>
-            <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-              <span className="text-slate-400 text-[10px]">
-                Target: <strong className="text-white">{currentBlock.farmers} Insured Parcels</strong>
+            <div className="flex justify-between items-center pt-1 border-t border-ink-800">
+              <span className="text-bone-500 text-[10px]">
+                Target: <strong className="text-bone-50 tabular-nums">{currentBlock.farmers} Parcels</strong>
               </span>
               <button
                 onClick={() => handleClaim(currentBlock.id, currentBlock.name, currentBlock.farmers)}
                 disabled={claimStatus[currentBlock.id]}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition focus-visible:ring-2 focus-visible:ring-saffron-500 ${
                   claimStatus[currentBlock.id]
                     ? "bg-emerald-950 text-emerald-300 border border-emerald-800 cursor-default"
-                    : "bg-amber-600 hover:bg-amber-500 text-black border border-amber-400"
+                    : "bg-saffron-500 hover:bg-saffron-600 text-ink-950"
                 }`}
               >
                 {claimStatus[currentBlock.id] ? "CLAIM QUEUED ✓" : "QUEUE PMFBY CLAIM"}
               </button>
             </div>
           </div>
-        </div>
+        </SurveyCard>
 
         {/* Feedback Message */}
         {toastMessage && (
-          <div className="p-2 bg-emerald-950 border border-emerald-800 text-emerald-300 text-[10px] rounded flex items-center space-x-1.5">
+          <div className="p-2 bg-emerald-950/90 border border-emerald-700 text-emerald-300 text-[10px] rounded flex items-center space-x-1.5 animate-fadeIn">
             <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
             <span>{toastMessage}</span>
           </div>
@@ -227,7 +236,7 @@ export default function SectorViews({
       capacityPercent: 92,
       inflow: "420 cumec",
       status: "Sluice Gate 03 Open",
-      tier: "ELEVATED",
+      tier: "WARNING",
     },
     {
       name: "Kerwa Dam Reservoir",
@@ -243,7 +252,7 @@ export default function SectorViews({
       capacityPercent: 84,
       inflow: "140 cumec",
       status: "13 Radial Gates Standby",
-      tier: "NOMINAL",
+      tier: "NORMAL",
     },
     {
       name: "Sevan River Rural Checkdam",
@@ -251,7 +260,7 @@ export default function SectorViews({
       capacityPercent: isRainBreached ? 104 : 68,
       inflow: isRainBreached ? "310 cumec" : "45 cumec",
       status: isRainBreached ? "SPILLWAY OVERFLOW (+0.85m)" : "Stable Retention",
-      tier: isRainBreached ? "CRITICAL" : "NOMINAL",
+      tier: isRainBreached ? "CRITICAL" : "NORMAL",
     },
   ];
 
@@ -288,116 +297,93 @@ export default function SectorViews({
 
   return (
     <div className="flex-1 p-3 flex flex-col space-y-3 overflow-y-auto font-mono text-xs">
-      {/* Header Attribution */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800 flex-shrink-0">
-        <div>
-          <span className="font-bold text-white text-[11px] block">
-            BHUVAN & BHOONIDHI HYDROLOGICAL AUDIT
-          </span>
-          <span className="text-[10px] text-slate-400">
-            Dam Storage, River Gaging & Cadastral Inundation
-          </span>
-        </div>
-        <span className="text-[10px] text-cyan-400 font-bold">
-          EOS-04 SAR
-        </span>
-      </div>
+      {/* Section Header */}
+      <SectionLabel
+        title="BHUVAN & BHOONIDHI HYDROLOGY"
+        portal="NRSC HYDERABAD"
+        portalColor="text-bhoonidhi-teal"
+        rightAction={<StatusChip variant="saffron" size="sm" label="EOS-04 SAR" />}
+      />
 
       {/* Basin Reservoir Storage Status */}
-      <div className="bg-[#0b1120] border border-slate-800 rounded p-2.5 space-y-2">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-          BASIN RESERVOIR STORAGE & INFLOW METRICS
+      <SurveyCard ticks={true} className="p-2.5 space-y-2">
+        <span className="text-[10px] font-bold text-bone-500 uppercase tracking-survey block">
+          RESERVOIR STORAGE & INFLOW TELEMETRY
         </span>
 
-        <table className="w-full data-table text-[10px]">
-          <thead>
-            <tr>
-              <th>Reservoir</th>
-              <th>Cap</th>
-              <th>Inflow</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reservoirs.map((res) => (
-              <tr key={res.name}>
-                <td className="text-white font-bold">{res.name}</td>
-                <td className="tabular-data">
-                  <span className={res.capacityPercent >= 100 ? "text-rose-400 font-bold" : res.capacityPercent >= 85 ? "text-amber-400 font-bold" : "text-cyan-400"}>
-                    {res.capacityPercent}%
-                  </span>
-                </td>
-                <td className="text-slate-400 tabular-data">{res.inflow}</td>
-                <td>
-                  <span className={`px-1 py-0.2 rounded text-[9px] ${
+        <div className="space-y-2">
+          {reservoirs.map((res) => (
+            <div key={res.name} className="bg-ink-950/70 p-2 rounded border border-ink-800 space-y-1">
+              <div className="flex justify-between items-center text-[11px] font-bold">
+                <span className="text-bone-50">{res.name}</span>
+                <StatusChip
+                  variant={
                     res.tier === "CRITICAL"
-                      ? "bg-rose-950 text-rose-300 font-bold border border-rose-800"
-                      : res.tier === "ELEVATED"
-                      ? "bg-amber-950 text-amber-300"
-                      : "text-slate-400"
-                  }`}>
-                    {res.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                      ? "critical"
+                      : res.tier === "WARNING"
+                      ? "warning"
+                      : res.tier === "WATCH"
+                      ? "watch"
+                      : "normal"
+                  }
+                  size="sm"
+                  label={`${res.capacityPercent}%`}
+                />
+              </div>
+              <BudgetMeter
+                current={res.capacityPercent}
+                max={100}
+                threshold={90}
+                unit="%"
+                label="Storage Volume"
+                sublabel={`${res.frl} • Inflow: ${res.inflow} • ${res.status}`}
+              />
+            </div>
+          ))}
+        </div>
+      </SurveyCard>
 
-      {/* Municipal Infrastructure Risk Matrix */}
-      <div className="bg-[#0b1120] border border-slate-800 rounded p-2.5 space-y-2">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-          INFRASTRUCTURE FLOOD VULNERABILITY MATRIX
+      {/* Cadastral Infrastructure Risk Matrix */}
+      <SurveyCard ticks={true} className="p-2.5 space-y-2">
+        <span className="text-[10px] font-bold text-bone-500 uppercase tracking-survey block">
+          CRITICAL INFRASTRUCTURE FLOOD AUDIT
         </span>
 
-        <table className="w-full data-table text-[10px]">
+        <table className="w-full text-[10px] font-mono border-collapse">
           <thead>
-            <tr>
-              <th>Asset</th>
-              <th>Elev</th>
-              <th>Risk</th>
-              <th>Status</th>
+            <tr className="border-b border-ink-800 text-bone-500 text-left">
+              <th className="py-1">Facility</th>
+              <th className="py-1">Elev</th>
+              <th className="py-1">Risk</th>
+              <th className="py-1 text-right">Status</th>
             </tr>
           </thead>
           <tbody>
-            {infrastructureRisks.map((infra) => (
-              <tr key={infra.asset}>
-                <td className="text-white">
-                  <div>{infra.asset}</div>
-                  <div className="text-[9px] text-slate-500">{infra.type}</div>
-                </td>
-                <td className="text-slate-400 tabular-data">{infra.elevation}</td>
-                <td className="tabular-data font-bold">
-                  <span className={infra.status === "SUBMERGED" ? "text-rose-400" : infra.status === "FLOOD WATCH" ? "text-amber-400" : "text-emerald-400"}>
-                    {infra.riskScore}
-                  </span>
-                </td>
-                <td>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                    infra.status === "SUBMERGED"
-                      ? "bg-rose-950 text-rose-300 border border-rose-800"
-                      : infra.status === "FLOOD WATCH"
-                      ? "bg-amber-950 text-amber-300 border border-amber-800"
-                      : "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                  }`}>
-                    {infra.status}
-                  </span>
+            {infrastructureRisks.map((inf) => (
+              <tr key={inf.asset} className="border-b border-ink-800/60 hover:bg-ink-800/30">
+                <td className="py-1.5 text-bone-50 font-bold">{inf.asset.split("(")[0]}</td>
+                <td className="py-1.5 text-bone-400 tabular-nums">{inf.elevation}</td>
+                <td className="py-1.5 text-saffron-400 tabular-nums font-bold">{inf.riskScore}</td>
+                <td className="py-1.5 text-right">
+                  <StatusChip
+                    variant={
+                      inf.status === "SUBMERGED"
+                        ? "critical"
+                        : inf.status === "FLOOD WATCH"
+                        ? "warning"
+                        : "normal"
+                    }
+                    size="sm"
+                    label={inf.status}
+                  />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* Hydro-Geological Infiltration Metrics */}
-      <div className="bg-[#0b1120] border border-slate-800 rounded p-2 text-[10px]">
-        <div className="grid grid-cols-3 gap-1 text-slate-400">
-          <div>Recharge: <strong className="text-emerald-400">78.4%</strong></div>
-          <div>Infiltration: <strong className="text-white">18.2 mm/h</strong></div>
-          <div>Siltation: <strong className="text-slate-300">12%</strong></div>
-        </div>
-      </div>
+      </SurveyCard>
     </div>
   );
 }
+
+export default SectorViews;

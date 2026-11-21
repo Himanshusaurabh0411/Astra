@@ -8,15 +8,21 @@ const STATIC_ASSETS = [
   "/",
   "/field",
   "/manifest.json",
-  "/favicon.ico"
+  "/icon-192.png"
 ];
 
 // Install: Pre-cache core emergency pages
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
+    caches.open(CACHE_NAME).then(async (cache) => {
       console.log("🛰️ [TerraPulse SW] Pre-caching static assets for offline rescue operations");
-      return cache.addAll(STATIC_ASSETS);
+      for (const asset of STATIC_ASSETS) {
+        try {
+          await cache.add(asset);
+        } catch (err) {
+          console.warn(`[TerraPulse SW] Skipping cache for ${asset}:`, err);
+        }
+      }
     }).then(() => self.skipWaiting())
   );
 });

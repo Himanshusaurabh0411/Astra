@@ -2,83 +2,178 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==============================================================================
+   TerraPulse Design System: "Orbital Survey"
+   Cartographic Mission-Control & Tactical Field Telemetry
+   ============================================================================== */
+
 :root {
-  --bg-primary: #070b14;
-  --bg-secondary: #0b1120;
-  --bg-tertiary: #10172b;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-active: rgba(56, 189, 248, 0.35);
-  --foreground: #e2e8f0;
+  /* Default: Dark "Night Watch" */
+  --bg-page: #070B14;
+  --bg-surface: #0B1220;
+  --bg-inset: #111A2C;
+  --bg-hover: #1B2740;
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(255, 138, 61, 0.45);
+  --text-primary: #EEF2F7;
+  --text-secondary: #A9B4C6;
+  --text-muted: #6E7B93;
+  --brand-accent: #FF8A3D;
+
+  /* Domain Spatial Hues */
+  --hue-mosdac: #5BC0FF;
+  --hue-bhoonidhi: #2DD4C4;
+  --hue-vedas-open: #9BE564;
+  --hue-vedas-submerged: #FF5D5D;
+  --hue-vedas-corridor: #F5D547;
+  --hue-bhuvan: #B79CFF;
+  --hue-mesh: #4ADE80;
+}
+
+/* Light Mode: "Survey Paper" (High-contrast cartographic parchment) */
+.light,
+[data-theme="light"] {
+  --bg-page: #F4EFE4;
+  --bg-surface: #FBF8F1;
+  --bg-inset: #EDE6D6;
+  --bg-hover: #E2D9C6;
+  --border-hairline: rgba(20, 33, 61, 0.12);
+  --border-focus: rgba(217, 101, 26, 0.55);
+  --text-primary: #14213D;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --brand-accent: #D9651A;
+
+  /* AA-Darkened Spatial Hues for Light Parchment */
+  --hue-mosdac: #0284C7;
+  --hue-bhoonidhi: #0D9488;
+  --hue-vedas-open: #15803D;
+  --hue-vedas-submerged: #DC2626;
+  --hue-vedas-corridor: #B45309;
+  --hue-bhuvan: #7C3AED;
+  --hue-mesh: #16A34A;
 }
 
 body {
-  color: var(--foreground);
-  background-color: var(--bg-primary);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--text-primary);
+  background-color: var(--bg-page);
+  font-family: 'Plus Jakarta Sans', Inter, -apple-system, sans-serif;
   overflow-x: hidden;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Operational C2 Console Paneling (No generic neon glow) */
-.c2-panel {
-  background: rgba(11, 17, 32, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* ==============================================================================
+   Topographic Contour Texture (Inline SVG, 3–6% opacity)
+   ============================================================================== */
+.bg-topo-contours {
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 20 Q 30 10, 60 25 T 120 20 M0 45 Q 40 35, 75 50 T 120 40 M0 70 Q 25 80, 60 65 T 120 75 M0 95 Q 50 85, 80 100 T 120 90' fill='none' stroke='%23ffffff' stroke-width='0.5' stroke-opacity='0.04' stroke-dasharray='3 2'/%3E%3C/svg%3E");
+  background-repeat: repeat;
 }
 
-.c2-panel-inset {
-  background: rgba(7, 11, 20, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.light .bg-topo-contours,
+[data-theme="light"] .bg-topo-contours {
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 20 Q 30 10, 60 25 T 120 20 M0 45 Q 40 35, 75 50 T 120 40 M0 70 Q 25 80, 60 65 T 120 75 M0 95 Q 50 85, 80 100 T 120 90' fill='none' stroke='%2314213D' stroke-width='0.5' stroke-opacity='0.06' stroke-dasharray='3 2'/%3E%3C/svg%3E");
 }
 
-.c2-panel-interactive {
-  background: rgba(11, 17, 32, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.15s ease-in-out;
+/* ==============================================================================
+   Survey Panel Corner Ticks (+) & Hairlines
+   ============================================================================== */
+.survey-ticks {
+  position: relative;
 }
 
-.c2-panel-interactive:hover {
-  background: rgba(16, 23, 43, 0.95);
-  border-color: rgba(56, 189, 248, 0.3);
+.survey-ticks::before,
+.survey-ticks::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+  border-color: rgba(255, 138, 61, 0.4);
+  z-index: 10;
 }
 
-/* Dense Data Table & Row Utilities */
-.data-table th {
-  padding: 6px 10px;
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  text-align: left;
+.survey-ticks::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1.5px solid;
+  border-left: 1.5px solid;
 }
 
-.data-table td {
-  padding: 6px 10px;
-  font-size: 11px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+.survey-ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1.5px solid;
+  border-right: 1.5px solid;
 }
 
-.data-table tr:hover td {
-  background: rgba(255, 255, 255, 0.03);
+/* Hairline Cartographic Paneling */
+.survey-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-/* Tabular Numbers for telemetry */
-.tabular-data {
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+.survey-panel-inset {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-hairline);
+}
+
+.survey-interactive {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.survey-interactive:hover {
+  background: var(--bg-hover);
+  border-color: rgba(255, 138, 61, 0.35);
+}
+
+/* ==============================================================================
+   Telemetry & Tabular Typography Utilities
+   ============================================================================== */
+.tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* High-contrast Field Device Styling for /field */
-.field-lcd {
-  background: #03060d;
-  border: 1px solid #1e293b;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8);
+.survey-mono {
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Purposeful 60fps Micro-Animations */
+.survey-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.survey-heading-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+/* High-contrast Field Device LCD styling */
+.field-lcd {
+  background: #03060D;
+  border: 1px solid #1B2740;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.85);
+}
+
+.light .field-lcd,
+[data-theme="light"] .field-lcd {
+  background: #EDE6D6;
+  border: 1px solid #DDD3BD;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ==============================================================================
+   Micro-Animations (60fps, GPU Accelerated)
+   ============================================================================== */
 @keyframes flowDash {
   to {
     stroke-dashoffset: -24;
@@ -103,8 +198,8 @@ body {
 
 @keyframes beaconRing {
   0% {
-    r: 8;
-    opacity: 0.9;
+    r: 6;
+    opacity: 0.95;
   }
   100% {
     r: 22;
@@ -122,8 +217,8 @@ body {
     transform: scale(1);
   }
   50% {
-    opacity: 0.85;
-    transform: scale(1.02);
+    opacity: 0.88;
+    transform: scale(1.015);
   }
 }
 
@@ -131,11 +226,10 @@ body {
   animation: pulseSubtle 2.5s ease-in-out infinite;
 }
 
-/* Smooth Fade In */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -144,31 +238,36 @@ body {
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Reduced Motion Override */
+/* Accessible reduced-motion overrides */
 @media (prefers-reduced-motion: reduce) {
   .anim-flow-corridor,
   .anim-mesh-stream,
   .anim-beacon-ring,
-  .anim-pulse-subtle {
+  .anim-pulse-subtle,
+  .animate-fadeIn {
     animation: none !important;
+    transition: none !important;
   }
 }
 
-/* Custom Minimalist Scrollbars */
+/* Custom Minimalist Hairline Scrollbars */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #070b14;
+  background: var(--bg-page);
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--bg-hover);
   border-radius: 2px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--text-muted);
 }

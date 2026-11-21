@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Compass, Satellite, MapPin, CheckCircle2, Crosshair, RefreshCw, Radio } from "lucide-react";
+import { Satellite, Crosshair, Loader2, Compass } from "lucide-react";
 import { NavicFixData, saveNavicFix, getNavicFix } from "@/lib/offlineStore";
+import { SurveyCard } from "./primitives/SurveyCard";
+import { StatusChip } from "./primitives/StatusChip";
+import { StatusDot } from "./primitives/StatusDot";
 
-interface NavicPanelProps {
+export interface NavicPanelProps {
   currentFix: NavicFixData | null;
   onFixLocked: (fix: NavicFixData) => void;
   className?: string;
@@ -12,36 +15,44 @@ interface NavicPanelProps {
 
 const BASIN_PRESETS = [
   {
-    name: "Sevan River Causeway (SH-18 Link)",
+    name: "Sevan River Causeway",
+    desc: "SH-18 Low-Water Bridge",
     lat: 23.0910,
     lng: 77.0580,
     elev: 482,
-    status: "Submerged in flood",
+    status: "Submerged (+0.85m)",
+    isSubmerged: true,
   },
   {
-    name: "Kothri Kalan Gram Panchayat",
+    name: "Kothri Kalan Village",
+    desc: "Gram Panchayat Center",
     lat: 23.0840,
     lng: 77.0320,
     elev: 492,
-    status: "Isolated low-lying",
+    status: "Low-lying (Cut Off)",
+    isSubmerged: false,
   },
   {
-    name: "VIT Bhopal Relief Shelter (High Ground)",
+    name: "VIT Relief Shelter",
+    desc: "High Ground Auditorium",
     lat: 23.0805,
     lng: 77.0160,
     elev: 512,
-    status: "Safe ridge crest",
+    status: "Safe Ridge (>510m)",
+    isSubmerged: false,
   },
   {
-    name: "Ashta Western Ridge Node",
+    name: "Ashta Western Ridge",
+    desc: "Passable Bypass Node",
     lat: 23.1850,
     lng: 77.0950,
     elev: 504,
-    status: "High road corridor",
+    status: "Open Ridge (504m)",
+    isSubmerged: false,
   },
 ];
 
-export default function NavicPanel({ currentFix, onFixLocked, className = "" }: NavicPanelProps) {
+export function NavicPanel({ currentFix, onFixLocked, className = "" }: NavicPanelProps) {
   const [locking, setLocking] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<number | null>(0);
   const [fix, setFix] = useState<NavicFixData>(
@@ -112,53 +123,69 @@ export default function NavicPanel({ currentFix, onFixLocked, className = "" }: 
   };
 
   return (
-    <div className={`field-lcd rounded-lg p-3 text-xs font-mono space-y-2.5 ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+    <SurveyCard ticks={true} className={`p-3 text-xs font-mono space-y-2.5 ${className}`}>
+      {/* Header with Step 1 Badge */}
+      <div className="flex items-center justify-between border-b border-ink-700/80 pb-1.5">
         <div className="flex items-center space-x-2">
-          <Satellite className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="font-bold text-white tracking-wider text-[11px]">
-            NAVIC RECEIVER // IRNSS L5+S
+          <span className="text-[9px] bg-saffron-500/20 text-saffron-400 font-extrabold px-1.5 py-0.5 rounded border border-saffron-500/40 uppercase tracking-survey">
+            STEP 1
           </span>
+          <div className="flex items-center space-x-1.5">
+            <Compass className="w-3.5 h-3.5 text-saffron-500" />
+            <span className="font-bold text-bone-50 tracking-survey text-[11px] uppercase">
+              YOUR LOCATION (PASSIVE NAVIC)
+            </span>
+          </div>
         </div>
         <div className="flex items-center space-x-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] text-emerald-400 font-bold">LOCKED</span>
-          <span className="text-[10px] text-slate-500">| ZERO-SIM</span>
+          <StatusDot status="mesh" pulse={true} size="sm" />
+          <StatusChip variant="mesh" size="sm" label="L5+S LOCKED" />
         </div>
       </div>
+
+      <p className="text-[10px] text-bone-400 font-sans leading-tight">
+        Zero-SIM passive RF satellite positioning: receives coordinates without cell tower connectivity or internet.
+      </p>
 
       {/* Main Coordinate Readout */}
-      <div className="bg-[#070c18] border border-slate-800 p-2.5 rounded">
+      <div className="bg-ink-950/90 border border-ink-800 p-2.5 rounded-md survey-ticks">
         <div className="grid grid-cols-2 gap-2 text-[11px]">
           <div>
-            <span className="text-[9px] text-slate-500 block uppercase">Latitude (WGS84)</span>
-            <strong className="text-white text-xs tabular-data">{fix.lat.toFixed(6)}° N</strong>
+            <span className="text-[9px] text-bone-500 block uppercase tracking-survey font-semibold">
+              Latitude
+            </span>
+            <strong className="text-bone-50 text-xs tabular-nums font-mono font-bold">
+              {fix.lat.toFixed(6)}° N
+            </strong>
           </div>
           <div>
-            <span className="text-[9px] text-slate-500 block uppercase">Longitude (WGS84)</span>
-            <strong className="text-white text-xs tabular-data">{fix.lng.toFixed(6)}° E</strong>
+            <span className="text-[9px] text-bone-500 block uppercase tracking-survey font-semibold">
+              Longitude
+            </span>
+            <strong className="text-bone-50 text-xs tabular-nums font-mono font-bold">
+              {fix.lng.toFixed(6)}° E
+            </strong>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-1 pt-2 mt-2 border-t border-slate-800/80 text-[10px] text-slate-400">
+        <div className="grid grid-cols-3 gap-1 pt-2 mt-2 border-t border-ink-800/80 text-[10px] text-bone-400">
           <div>
-            Accuracy: <strong className="text-emerald-400">±{fix.accuracy_m}m</strong>
+            Accuracy: <strong className="text-emerald-400 tabular-nums font-mono">±{fix.accuracy_m}m</strong>
           </div>
           <div>
-            Constellation: <strong className="text-cyan-400">NavIC 7-Sat</strong>
+            Band: <strong className="text-mosdac">NavIC L5+S</strong>
           </div>
           <div>
-            Mode: <strong className="text-amber-400">Passive RF</strong>
+            Mode: <strong className="text-saffron-400">Zero-SIM RF</strong>
           </div>
         </div>
       </div>
 
-      {/* Catchment Geoposition Presets */}
+      {/* 1-Tap Basin Location Presets */}
       <div className="space-y-1">
-        <div className="flex justify-between items-center text-[10px] text-slate-400">
-          <span className="uppercase">Basin Sector Presets</span>
-          <span>Kothri-Sehore Sub-Basin</span>
+        <div className="flex justify-between items-center text-[10px] text-bone-500">
+          <span className="uppercase tracking-survey font-semibold">Tap Quick Basin Location</span>
+          <span className="text-[9px]">Kothri-Sehore Basin</span>
         </div>
 
         <div className="grid grid-cols-2 gap-1.5">
@@ -166,16 +193,16 @@ export default function NavicPanel({ currentFix, onFixLocked, className = "" }: 
             <button
               key={p.name}
               onClick={() => handlePresetSelect(i)}
-              className={`p-1.5 rounded text-left transition border ${
+              className={`p-1.5 rounded text-left transition border focus-visible:ring-1 focus-visible:ring-saffron-500 ${
                 selectedPreset === i
-                  ? "bg-slate-800 text-white border-cyan-500/70"
-                  : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white"
+                  ? "bg-ink-800 text-bone-50 border-saffron-500/70 shadow-sm"
+                  : "bg-ink-950/60 border-ink-800 text-bone-400 hover:text-bone-50 hover:bg-ink-800/60"
               }`}
             >
-              <div className="font-bold text-[10px] truncate">{p.name.split("(")[0]}</div>
-              <div className="text-[9px] text-slate-500 flex justify-between mt-0.5">
+              <div className="font-bold text-[10px] truncate">{p.name}</div>
+              <div className="text-[9px] text-bone-500 flex justify-between mt-0.5 tabular-nums">
                 <span>{p.elev}m AMSL</span>
-                <span className={p.status.includes("Submerged") ? "text-rose-400" : "text-emerald-400"}>
+                <span className={p.isSubmerged ? "text-severity-critical font-bold" : "text-emerald-400"}>
                   {p.status.split(" ")[0]}
                 </span>
               </div>
@@ -188,11 +215,17 @@ export default function NavicPanel({ currentFix, onFixLocked, className = "" }: 
       <button
         onClick={handleCaptureLive}
         disabled={locking}
-        className="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold flex items-center justify-center space-x-1.5 transition disabled:opacity-50"
+        className="w-full py-1.5 rounded bg-ink-800 hover:bg-ink-700 text-bone-100 border border-ink-700 text-[11px] font-mono font-bold flex items-center justify-center space-x-1.5 transition focus-visible:ring-2 focus-visible:ring-saffron-500 disabled:opacity-50"
       >
-        <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+        {locking ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-saffron-500" />
+        ) : (
+          <Crosshair className="w-3.5 h-3.5 text-saffron-500" />
+        )}
         <span>{locking ? "Acquiring NavIC/GPS Fix..." : "Acquire Live Hardware Coordinates"}</span>
       </button>
-    </div>
+    </SurveyCard>
   );
 }
+
+export default NavicPanel;
