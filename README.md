@@ -1,12 +1,37 @@
-# TerraPulse
+# 🛰️ TerraPulse — Space-to-Ground Disaster Intelligence & Tactical Mesh
 
-TerraPulse is an India-wide disaster-monitoring and rescue exercise website. It brings heavy rain, flood water, road closures, relief points and requests for help together on one map. The field responder can open a previously saved map and queue an SOS while disconnected.
+> **Monitor • Analyse • Act**  
+> AI-powered ISRO Earth Observation flood intelligence and off-grid tactical rescue platform.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FHimanshusaurabh0411%2FAstra&root-directory=frontend)
+
+---
+
+## ⚡ 1-Click Vercel Deployment
+
+Deploy the **TerraPulse** Next.js web application directly to Vercel:
+
+1. Click the **[Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FHimanshusaurabh0411%2FAstra&root-directory=frontend)** button above (or import `https://github.com/Himanshusaurabh0411/Astra` in [Vercel Dashboard](https://vercel.com/new)).
+2. In the import settings:
+   - **Root Directory**: `frontend` *(pre-configured via the button)*
+   - **Framework Preset**: `Next.js` *(auto-detected)*
+   - **Build Command**: `next build`
+   - **Output Directory**: `.next`
+3. Click **Deploy**. Vercel will build and assign a global CDN URL (e.g., `https://astra-terrapulse.vercel.app`).
+
+*Note: The frontend includes self-contained offline GIS hydration (`src/lib/offlineStore.ts`) so the entire dashboard, satellite map, and field responder work standalone out-of-the-box.*
+
+---
+
+## Overview
+
+TerraPulse is an India-wide disaster-monitoring and rescue exercise platform. It brings heavy rain, flood water, road closures, relief points and requests for help together on one map. The field responder can open a previously saved map and queue an SOS while disconnected.
 
 The bundled measurements, routes and incidents are exercise data. TerraPulse simulates NavIC positioning and LoRa/BLE radio hops. Device location uses browser geolocation when you allow it.
 
 ## Run with Docker
 
-Install Docker with Compose, then run these commands from the repository root.
+Install Docker with Compose, then run these commands from the repository root:
 
 ```bash
 docker compose up --build -d --wait
