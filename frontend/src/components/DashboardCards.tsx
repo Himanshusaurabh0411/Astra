@@ -24,8 +24,8 @@ export function KpiCards({ state, history, sample }: {
   const data = state.kpis;
   const captions = [
     `Above ${state.features.metadata.rainfall_threshold_mm_hr ?? 15} mm/hr`,
-    "Mapped standing water", `${formatNumber(data.active_sos_count)} help requests`,
-    `${formatNumber(data.active_mesh_relays)} mesh relays active`,
+    "Mapped standing water", `${formatNumber(data?.active_sos_count ?? 0)} help requests`,
+    `${formatNumber(data?.active_mesh_relays ?? 0)} mesh relays active`,
   ];
   return <div className="tp-kpis">
     {CARD_METRICS.map(({ key, label, icon: Icon, color, decimals }, index) => {

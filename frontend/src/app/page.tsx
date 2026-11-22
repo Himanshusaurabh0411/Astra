@@ -219,7 +219,7 @@ export default function Dashboard() {
 
   const changeMode = () => run(blackout ? "Restoring connection…" : "Simulating blackout…", async () => {
     const update = await switchOperationalMode(blackout ? "BACKHAUL_SYNC" : "CELL_BLACKOUT_MESH_ACTIVE");
-    setSnapshot(update);
+    setSnapshot({ ...update });
     const title = blackout ? "Connection restored" : "Network blackout simulated";
     const detail = blackout ? "Field responders can sync their queued exercise requests." : "Field responders can save help requests while the mobile network is down.";
     setNotice({ title, detail });
@@ -233,7 +233,8 @@ export default function Dashboard() {
     const detail = dispatch.saved_locally ? `${dispatch.safe_asset.name} is available in the local map.`
       : `Field responders can open the route to ${dispatch.safe_asset.name}.`;
     setNotice({ title, detail });
-    setSnapshot(compileLocalState());
+    const local = compileLocalState();
+    setSnapshot({ ...local, dispatches: [...local.dispatches] });
     log(activity(title, detail, "mesh"));
   });
 
@@ -332,6 +333,7 @@ export default function Dashboard() {
                 <CommandMap target={target} features={state.features.features} sosPackets={state.sos_packets}
                   dispatches={state.dispatches} activeLayers={layers} offline={mapOffline} allowTilt
                   onRegion={chooseRegion} onSelect={selectMap} onLayers={() => showNav("layers")}
+                  onSync={() => void sync()}
                   onPoint={(center) => setSelection({ kind: "place", name: "Selected map location", center, regionId: nearestRegion(center).id })} />
                 <div className="tp-map-legend" aria-label="Map legend">
                   {LAYERS.map(({ id, color, name }) => <span key={id} title={name}><i data-layer={id} style={{ color: id === "sos_mesh" ? "#ff6868" : color }} />{

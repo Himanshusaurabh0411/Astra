@@ -40,7 +40,7 @@ declare global {
   }
 }
 
-export type MapStyle = "satellite" | "hybrid" | "roadmap";
+export type MapStyle = "satellite" | "hybrid" | "terrain" | "roadmap";
 export const HAS_GOOGLE_MAPS = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim());
 const authEvents = new EventTarget();
 let loading: Promise<GoogleApi> | undefined;

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Box, Crosshair, Layers3, Minus, Plus, Radar } from "lucide-react";
+import { Box, Clock, Crosshair, Layers3, Minus, Plus, Radar, RotateCcw } from "lucide-react";
 import basemap from "@/lib/india-basemap.json";
 import { loadGoogleMaps, onGoogleAuthFailure, HAS_GOOGLE_MAPS, type GoogleMap, type MapStyle } from "@/lib/googleMaps";
 import { INDIA, INDIA_REGIONS, inBounds, type Bounds, type Point, type Region } from "@/lib/regions";
 import {
-  featurePoint, featureRegion, type DispatchVector, type GeoJsonFeature, type GeoJsonGeometry, type SOSPacket,
+  featurePoint, featureRegion, type DispatchVector, type GeoJsonFeature, type GeoJsonGeometry, type HazardSeverity, type SOSPacket,
 } from "@/lib/terrapulseClient";
 import { mapColor, type ActiveLayers } from "@/lib/layers";
 import { useSatelliteFrame } from "@/lib/satelliteImagery";
@@ -17,7 +17,146 @@ export interface MapTarget {
   bbox?: Bounds;
   label: string;
 }
+
 export type MapSelection = GeoJsonFeature | SOSPacket;
+
+export interface TacticalEmergency {
+  id: string;
+  title: string;
+  type: "squad" | "hazard";
+  subType: "ambulance" | "ship" | "boat" | "warning" | "fire" | "wave";
+  icon: string;
+  badgeText?: string;
+  point: Point;
+  severity: HazardSeverity;
+  theme: "crimson" | "teal" | "navy" | "amber" | "cyan";
+  headline: string;
+  details: string;
+  actionText: string;
+}
+
+export const TACTICAL_EMERGENCIES: TacticalEmergency[] = [
+  {
+    id: "sdrf-bravo-2",
+    title: "SDRF Trauma Ambulance Bravo-2",
+    type: "squad",
+    subType: "ambulance",
+    icon: "🚑",
+    badgeText: "🚑 SDRF Trauma Ambulance Bravo-2",
+    point: [77.4126, 23.2599], // Bhopal / MP
+    severity: "CRITICAL",
+    theme: "crimson",
+    headline: "Critical Care Unit Bravo-2 stationed along NH-46 corridor.",
+    details: "Equipped with advanced resuscitation kits, VHF/NavIC telemetry relay, and rapid extrication gear for flood rescue.",
+    actionText: "Keep NH-46 corridor clear and maintain live satellite link.",
+  },
+  {
+    id: "icg-interceptor-438",
+    title: "ICG Interceptor C-438",
+    type: "squad",
+    subType: "ship",
+    icon: "🚢",
+    badgeText: "🚢 ICG Interceptor C-438",
+    point: [86.5200, 19.8100], // Offshore Odisha / Bay of Bengal
+    severity: "HIGH",
+    theme: "teal",
+    headline: "Indian Coast Guard high-speed interceptor patrolling Bay of Bengal.",
+    details: "Monitoring offshore maritime distress signals, heavy swell warnings, and coastal trawler traffic off Paradip.",
+    actionText: "Relay storm surge alerts over maritime radio frequencies.",
+  },
+  {
+    id: "ndrf-flotilla-4",
+    title: "NDRF Flotilla Delta-4",
+    type: "squad",
+    subType: "boat",
+    icon: "🚤",
+    badgeText: "🚤 NDRF Flotilla Delta-4",
+    point: [80.3200, 13.0800], // Offshore Tamil Nadu / Chennai
+    severity: "HIGH",
+    theme: "navy",
+    headline: "NDRF Flood Evacuation Flotilla deployed in coastal waters.",
+    details: "Motorized rescue boats on 10-minute readiness for estuarine and shallow-water humanitarian extraction.",
+    actionText: "Coordinate safe landing zones with district disaster collectors.",
+  },
+  {
+    id: "hazard-warn-punjab",
+    title: "Severe Weather Warning · Punjab / Haryana",
+    type: "hazard",
+    subType: "warning",
+    icon: "⚠️",
+    point: [76.2000, 30.2000],
+    severity: "HIGH",
+    theme: "amber",
+    headline: "Convective squall line and localized wind gusts >60 km/h.",
+    details: "MOSDAC INSAT-3DS precipitation telemetry indicates rapid convective cloud formation and hail risk across agricultural zones.",
+    actionText: "Issue immediate squall alert and secure high-tension power lines.",
+  },
+  {
+    id: "hazard-fire-haryana",
+    title: "Thermal Hotspot Anomaly · Haryana Corridor",
+    type: "hazard",
+    subType: "fire",
+    icon: "🔥",
+    point: [76.8500, 29.5000],
+    severity: "HIGH",
+    theme: "crimson",
+    headline: "Intense thermal radiation spike detected via Sentinel-2 SWIR.",
+    details: "Open biomass burning anomaly exceeding 52°C surface temperature threshold with elevated particulate matter dispersion.",
+    actionText: "Alert local fire responders and environmental monitoring patrol.",
+  },
+  {
+    id: "hazard-fire-surat",
+    title: "Industrial Thermal Anomaly · Surat Belt",
+    type: "hazard",
+    subType: "fire",
+    icon: "🔥",
+    point: [72.8311, 21.1702],
+    severity: "HIGH",
+    theme: "crimson",
+    headline: "Surface temperature spike in Tapi estuarine industrial cluster.",
+    details: "Thermal infrared sensors report localized heat accumulation +18°C above seasonal baseline.",
+    actionText: "Verify industrial fire suppression and monitor chemical storage perimeters.",
+  },
+  {
+    id: "hazard-fire-bhopal",
+    title: "Thermal Anomaly · Central MP Zone",
+    type: "hazard",
+    subType: "fire",
+    icon: "🔥",
+    point: [77.4126, 23.2000],
+    severity: "HIGH",
+    theme: "crimson",
+    headline: "Biomass heat signature detected adjacent to Sehore catchment.",
+    details: "Satellite thermal radiometer marks rapid rise in surface temperature across dry scrubland.",
+    actionText: "Mobilize forest rangers and prepare fire break lines.",
+  },
+  {
+    id: "hazard-wave-mumbai",
+    title: "High Tidal Surge · Mumbai Harbor",
+    type: "hazard",
+    subType: "wave",
+    icon: "🌊",
+    point: [72.8200, 18.9500],
+    severity: "HIGH",
+    theme: "cyan",
+    headline: "Arabian Sea tidal swell exceeding 4.5m Spring Tide safety limits.",
+    details: "High astronomical tide with strong onshore winds causing sea water ingress along coastal promenades.",
+    actionText: "Close low-lying seafront gates and activate auxiliary dewatering pumps.",
+  },
+  {
+    id: "hazard-wave-tamilnadu",
+    title: "Marine Surge Alert · Coromandel Offshore",
+    type: "hazard",
+    subType: "wave",
+    icon: "🌊",
+    point: [80.8000, 13.5000],
+    severity: "HIGH",
+    theme: "cyan",
+    headline: "Deep maritime depression triggering 3.8m swells along North Tamil Nadu coast.",
+    details: "Coastal buoy telemetry indicates rapid atmospheric pressure drop and hazardous wave heights for coastal shipping.",
+    actionText: "Halt all beach operations and issue advisory to artisanal fishermen.",
+  },
+];
 
 interface Props {
   target: MapTarget;
@@ -26,12 +165,13 @@ interface Props {
   sosPackets?: SOSPacket[];
   dispatches?: DispatchVector[];
   offline?: boolean;
-  allowTilt?: boolean;
   onSelect?: (item: MapSelection) => void;
   onRegion?: (region: Region) => void;
   onPoint?: (point: Point) => void;
   onLayers?: () => void;
+  onSync?: () => void;
   location?: Point;
+  allowTilt?: boolean;
 }
 
 interface Dimensions { width: number; height: number }
@@ -42,25 +182,15 @@ interface Marker {
 }
 
 const MODES = [
-  { key: "satellite", label: "Satellite" },
   { key: "hybrid", label: "Hybrid" },
-  { key: "roadmap", label: "Map" },
+  { key: "satellite", label: "Satellite" },
+  { key: "terrain", label: "Terrain" },
+  { key: "roadmap", label: "Roadmap" },
 ] as const;
+
 const SOS_COLOR = "#FF6868";
 const ROUTE_COLOR = "#F5D547";
 const PULSE_COLOR = "#FF8A3D";
-const TERRAIN_VIEW = { depth: 1100, angle: 27, zoom: 1.08, origin: .54 };
-const TERRAIN_RADIANS = TERRAIN_VIEW.angle * Math.PI / 180;
-const REGION_LABEL_ANCHORS: Partial<Record<string, "start" | "end">> = {
-  "central-india": "end",
-  "indo-gangetic": "end",
-  "northeast-india": "start",
-};
-const LOCAL_PLACES = [
-  { name: "NEW DELHI", point: [77.209, 28.614] },
-  { name: "KOLKATA", point: [88.364, 22.573] },
-  { name: "HYDERABAD", point: [78.487, 17.385] },
-] as const;
 
 const boundsForImage = basemap.terrainBounds as Bounds;
 const borderPaths = basemap.polygons.map(({ india, rings }) => ({
@@ -97,13 +227,13 @@ function activate(event: KeyboardEvent, select: () => void) {
 
 export default function CommandMap({
   target, features, activeLayers, sosPackets = [], dispatches = [], offline = false,
-  onSelect, onRegion, onPoint, onLayers, location, allowTilt = false,
+  onSelect, onRegion, onPoint, onLayers, onSync, location, allowTilt = false,
 }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const googleHost = useRef<HTMLDivElement>(null);
   const googleMap = useRef<GoogleMap>();
-  const [size, setSize] = useState<Dimensions>({ width: 840, height: 450 });
-  const [mapStyle, setMapStyle] = useState<MapStyle>(allowTilt ? "hybrid" : "roadmap");
+  const [size, setSize] = useState<Dimensions>({ width: 840, height: 480 });
+  const [mapStyle, setMapStyle] = useState<MapStyle>("hybrid");
   const [tilt, setTilt] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [view, setView] = useState<View>(() => ({ center: target.center, scale: scaleFor(target, size) }));
@@ -114,6 +244,34 @@ export default function CommandMap({
   const selectItem = useRef(onSelect);
   const currentTarget = useRef(target);
   const currentStyle = useRef(mapStyle);
+
+  // Floating filter toolbar states
+  const [filterRadar, setFilterRadar] = useState(true);
+  const [filterThermal, setFilterThermal] = useState(true);
+  const [filterRoutes, setFilterRoutes] = useState(true);
+  const [filterSquads, setFilterSquads] = useState(true);
+
+  // Live clocks for UTC and IST
+  const [clocks, setClocks] = useState({ zulu: "00:54:18", ist: "06:24:18" });
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const zulu = now.toISOString().slice(11, 19);
+      const ist = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(now);
+      setClocks({ zulu, ist });
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   selectItem.current = onSelect;
   currentTarget.current = target;
   currentStyle.current = mapStyle;
@@ -216,21 +374,11 @@ export default function CommandMap({
   const visible = useMemo(() => features.filter((feature) =>
     activeLayers[feature.properties.layer] && feature.properties.record_kind !== "crop_stress"), [features, activeLayers]);
   const sos = activeLayers.sos_mesh ? sosPackets : [];
-  const routes = activeLayers.vedas_corridors ? dispatches : [];
+  const routes = (activeLayers.vedas_corridors && filterRoutes) ? dispatches : [];
   const usingGoogle = googleStatus === "ready" && !offline;
-  const tilted = allowTilt && tilt && !usingGoogle;
+
   const satelliteFrame = useSatelliteFrame(!offline && mapStyle !== "roadmap" && (!HAS_GOOGLE_MAPS || googleStatus === "fallback"),
     dragging, view.center, view.scale, size.width, size.height);
-
-  useEffect(() => {
-    if (!usingGoogle || !onPoint) return;
-    const listener = googleMap.current?.addListener("click", ({ latLng }) => {
-      if (!latLng) return;
-      const point: Point = [latLng.lng(), latLng.lat()];
-      if (inBounds(point, INDIA.bbox)) onPoint(point);
-    });
-    return () => listener?.remove();
-  }, [usingGoogle, onPoint]);
 
   useEffect(() => {
     if (!usingGoogle || !googleMap.current || !window.google) return;
@@ -282,26 +430,28 @@ export default function CommandMap({
   const hasScene = scene && ox + scene[2] * sx > 0 && ox + scene[0] * sx < size.width
     && oy - scene[1] * view.scale > 0 && oy - scene[3] * view.scale < size.height;
   const national = view.scale <= 23;
-  const showLabels = mapStyle !== "satellite";
   const drawFeature = (feature: GeoJsonFeature) =>
     feature.geometry.type !== "Point" && (!national || feature.properties.layer === "bhoonidhi_flood");
+
   const pointMarkers: Marker[] = visible.filter((f) => f.geometry.type === "Point").map((f, index) => ({
     id: f.id ?? `feature-${index}`, label: f.properties.title, point: featurePoint(f),
     color: mapColor(f.properties), shape: f.properties.layer === "bhuvan_assets" ? "asset" : undefined,
     pulse: f.properties.severity === "HIGH" || f.properties.severity === "CRITICAL",
     select: () => onSelect?.(f),
   }));
+
   const sosMarkers: Marker[] = sos.map((packet) => ({
     id: packet.sos_id, label: `${packet.triage.severity.toLowerCase()} help request · ${packet.triage.headcount} people`,
     point: [packet.position.lng, packet.position.lat], color: SOS_COLOR, shape: "sos", pulse: true,
     select: () => onSelect?.(packet),
   }));
+
   const regionMarkers: Marker[] = INDIA_REGIONS.flatMap((region) => {
     const regional = visible.filter((f) => featureRegion(f).id === region.id);
     const flood = regional.find((f) => f.properties.layer === "bhoonidhi_flood" && f.properties.water_depth_m);
     const heavy = regional.find((f) => f.properties.layer === "mosdac_rain" && f.properties.severity === "HIGH");
-    const location = region.places[0]?.center ?? region.center;
-    const nudge: Point = region.id === "arid-belt" ? [73.0243, 26.2389] : location;
+    const loc = region.places[0]?.center ?? region.center;
+    const nudge: Point = region.id === "arid-belt" ? [73.0243, 26.2389] : loc;
     return regional.length || onRegion ? [{
       id: region.id, label: region.short_name, point: nudge,
       color: heavy ? PULSE_COLOR : flood ? mapColor(flood.properties) : "#B79CFF",
@@ -309,6 +459,7 @@ export default function CommandMap({
       select: onRegion ? () => onRegion(region) : undefined,
     }] : [];
   });
+
   const markers = national
     ? [...regionMarkers, ...sosMarkers.slice(0, 1).map((marker) => ({ ...marker, offset: [15, 8] as Point }))]
     : [...pointMarkers, ...sosMarkers];
@@ -328,33 +479,18 @@ export default function CommandMap({
     if (map && usingGoogle) map.setZoom((map.getZoom() ?? target.zoom) + direction);
   };
 
-  const pointerPosition = (event: PointerEvent<HTMLDivElement>): Point => {
-    const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - left;
-    const y = event.clientY - top;
-    if (!tilted) return [x, y];
-    // Undo the CSS perspective before using the pointer in the geographic projection.
-    const { depth, zoom, origin } = TERRAIN_VIEW;
-    const ox = width / 2;
-    const oy = height * origin;
-    const screenY = y - oy;
-    const sin = Math.sin(TERRAIN_RADIANS);
-    const mapY = screenY / (zoom * (Math.cos(TERRAIN_RADIANS) + screenY * sin / depth));
-    return [ox + (x - ox) * (1 - zoom * mapY * sin / depth) / zoom, oy + mapY];
-  };
-  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
+  const startDrag = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0 || (event.target as Element).closest("[data-map-action]")) return;
     if (animation.current !== undefined) cancelAnimationFrame(animation.current);
-    const [x, y] = pointerPosition(event);
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x, y, center: view.center, scale: view.scale, moved: false };
+    drag.current = { x: event.clientX, y: event.clientY, center: view.center, scale: view.scale, moved: false };
   };
-  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
+
+  const moveDrag = (event: PointerEvent<SVGSVGElement>) => {
     const start = drag.current;
     if (!start) return;
-    const [x, y] = pointerPosition(event);
-    const dx = start.x - x;
-    const dy = y - start.y;
+    const dx = start.x - event.clientX;
+    const dy = event.clientY - start.y;
     if (!start.moved && Math.hypot(dx, dy) < 4) return;
     start.moved = true;
     setDragging(true);
@@ -364,136 +500,381 @@ export default function CommandMap({
         Math.min(42, Math.max(4, start.center[1] + dy / start.scale))],
     });
   };
-  const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
+
+  const stopDrag = (event: PointerEvent<SVGSVGElement>) => {
     const start = drag.current;
     drag.current = undefined;
     setDragging(false);
-    if (!start || start.moved || !onPoint || event.type !== "pointerup") return;
-    const point = unproject(...pointerPosition(event));
+    if (!start || start.moved || !onPoint || event.type === "pointercancel") return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const point = unproject(event.clientX - box.left, event.clientY - box.top);
     if (inBounds(point, INDIA.bbox)) onPoint(point);
   };
 
-  const kmPerPixel = 111.32 / Math.max(1, view.scale * (tilted ? TERRAIN_VIEW.zoom : 1));
+  const handleSelectEmergency = (item: TacticalEmergency) => {
+    const feature: GeoJsonFeature = {
+      type: "Feature",
+      id: item.id,
+      geometry: { type: "Point", coordinates: item.point },
+      properties: {
+        layer: item.type === "squad" ? "bhuvan_assets" : "bhoonidhi_flood",
+        title: item.title,
+        place_name: item.title,
+        hazard_type: item.headline,
+        recommended_action: item.actionText,
+        severity: item.severity,
+        observed_at: new Date().toISOString(),
+        asset_type: item.type === "squad" ? "SHELTER" : undefined,
+      },
+    };
+    onSelect?.(feature);
+  };
+
+  const kmPerPixel = 111.32 / Math.max(1, view.scale);
   const scaleKm = [1000, 500, 250, 100, 50, 25, 10, 5, 2, 1].find((km) => km / kmPerPixel <= 106) ?? .5;
-  const googleBadge = usingGoogle ? "Google Maps" : googleStatus === "loading" ? "Loading Google Maps…" : (
-    mapStyle === "roadmap" ? "India basemap" : hasScene ? "Sentinel-2 · 2025 mosaic" : "NASA terrain"
-  );
-  const gridStep = national ? 5 : view.scale < 150 ? 1 : .1;
-  const firstLongitude = Math.ceil((view.center[0] - size.width / 2 / sx) / gridStep) * gridStep;
-  const firstLatitude = Math.ceil((view.center[1] - size.height / 2 / view.scale) / gridStep) * gridStep;
-  const longitudes = Array.from({ length: Math.ceil(size.width / sx / gridStep) }, (_, index) => firstLongitude + index * gridStep);
-  const latitudes = Array.from({ length: Math.ceil(size.height / view.scale / gridStep) }, (_, index) => firstLatitude + index * gridStep);
+
+  const currentLat = view.center[1].toFixed(4);
+  const currentLng = view.center[0].toFixed(4);
 
   return (
-    <div className="map-canvas" data-style={mapStyle} ref={shell} aria-label={`Interactive map of ${target.label}`}>
-      <div hidden={usingGoogle} className={`map-surface${dragging ? " dragging" : ""}`}
-        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag}
-        onLostPointerCapture={stopDrag}>
-      <svg className="local-map" width="100%" height="100%"
-        style={tilted ? {
-          transform: `perspective(${TERRAIN_VIEW.depth}px) rotateX(${TERRAIN_VIEW.angle}deg) scale(${TERRAIN_VIEW.zoom})`,
-          transformOrigin: `50% ${TERRAIN_VIEW.origin * 100}%`,
-        } : undefined}
-        viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="India map and map markers">
+    <div className={`map-canvas ${allowTilt && tilt ? "map-tilted" : ""}`} ref={shell} aria-label={`Interactive map of ${target.label}`}>
+      {/* 1. TOP HEADER BAR INSIDE MAP */}
+      <div className="tp-map-top-bar">
+        <div className="tp-map-engine-badge">
+          <span className="tp-glow-dot-emerald" />
+          <span className="engine-name">Google Maps Satellite Engine</span>
+          <span className="engine-sep">|</span>
+          <span className="engine-count">9 Emergencies Mapped</span>
+        </div>
+
+        <div className="map-types" role="group" aria-label="Map view mode">
+          {MODES.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={mapStyle === key}
+              className={mapStyle === key ? "active-mode" : ""}
+              onClick={() => setMapStyle(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. FLOATING ACTION TOOLBAR */}
+      <div className="map-floating-bar" role="toolbar" aria-label="Tactical map controls">
+        <button
+          type="button"
+          className={`floating-pill pill-radar ${filterRadar ? "active" : ""}`}
+          onClick={() => setFilterRadar((v) => !v)}
+          title="Toggle Doppler radar & precipitation"
+        >
+          <span>🌧️</span> Radar
+        </button>
+        <button
+          type="button"
+          className={`floating-pill pill-thermal ${filterThermal ? "active" : ""}`}
+          onClick={() => setFilterThermal((v) => !v)}
+          title="Toggle SWIR thermal anomalies & hotspots"
+        >
+          <span>🔥</span> Thermal
+        </button>
+        <button
+          type="button"
+          className={`floating-pill pill-routes ${filterRoutes ? "active" : ""}`}
+          onClick={() => setFilterRoutes((v) => !v)}
+          title="Toggle VEDAS safe evacuation corridors"
+        >
+          <span>🧭</span> Routes
+        </button>
+        <button
+          type="button"
+          className={`floating-pill pill-squads ${filterSquads ? "active" : ""}`}
+          onClick={() => setFilterSquads((v) => !v)}
+          title="Toggle active disaster response units"
+        >
+          <span>🛡️</span> Squads
+        </button>
+        <button
+          type="button"
+          className="floating-action-btn"
+          title="Recenter Map"
+          aria-label="Recenter map"
+          onClick={recenter}
+        >
+          <Crosshair size={14} className="hud-amber" />
+        </button>
+        <button
+          type="button"
+          className="floating-action-btn"
+          title="Sync Satellite Feeds"
+          aria-label="Sync satellite feeds"
+          onClick={() => onSync?.()}
+        >
+          <RotateCcw size={13} />
+        </button>
+      </div>
+
+      {/* 3. BASE SVG MAP CANVAS */}
+      <svg
+        className={`local-map ${dragging ? "dragging" : ""}`}
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${size.width} ${size.height}`}
+        role="group"
+        aria-label="India terrain and emergency layer map"
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={stopDrag}
+        onPointerCancel={stopDrag}
+      >
         <defs>
-          <radialGradient id="map-vignette"><stop offset="45%" stopColor="#030916" stopOpacity="0" /><stop offset="100%" stopColor="#030916" stopOpacity=".28" /></radialGradient>
+          <radialGradient id="map-vignette">
+            <stop offset="45%" stopColor="#030916" stopOpacity="0" />
+            <stop offset="100%" stopColor="#030916" stopOpacity=".28" />
+          </radialGradient>
         </defs>
+
         <rect width={size.width} height={size.height} fill="var(--map-sea)" />
+
         {mapStyle !== "roadmap" && (
-          <image className={`map-terrain map-terrain-${mapStyle}`} href="/india-terrain.webp" x={pictureX} y={pictureY}
+          <image
+            href="/india-terrain.webp"
+            x={pictureX}
+            y={pictureY}
             width={(boundsForImage[2] - boundsForImage[0]) * sx}
-            height={(boundsForImage[3] - boundsForImage[1]) * view.scale} preserveAspectRatio="none" />
+            height={(boundsForImage[3] - boundsForImage[1]) * view.scale}
+            preserveAspectRatio="none"
+          />
         )}
-        {hasScene && satelliteFrame && <image href={satelliteFrame.url} x={ox + scene[0] * sx} y={oy - scene[3] * view.scale}
-          width={(scene[2] - scene[0]) * sx} height={(scene[3] - scene[1]) * view.scale} preserveAspectRatio="none" />}
+
+        {hasScene && satelliteFrame?.url && (
+          <image
+            href={satelliteFrame.url}
+            x={ox + scene[0] * sx}
+            y={oy - scene[3] * view.scale}
+            width={(scene[2] - scene[0]) * sx}
+            height={(scene[3] - scene[1]) * view.scale}
+            preserveAspectRatio="none"
+            opacity={0.88}
+          />
+        )}
+
         <g transform={`matrix(${sx} 0 0 ${-view.scale} ${ox} ${oy})`} pointerEvents="none">
-          {borderPaths.map(({ path, india }, index) => <path key={index} d={path}
-            fill={mapStyle === "roadmap" ? india ? "var(--map-land)" : "var(--map-neighbor)" : "none"}
-            stroke={india ? "var(--map-border)" : "var(--map-border-muted)"}
-            strokeWidth={india ? 1.05 : .55} strokeOpacity={mapStyle === "satellite" ? .6 : .95} vectorEffect="non-scaling-stroke" />)}
+          {borderPaths.map(({ path, india }, index) => (
+            <path
+              key={index}
+              d={path}
+              fill={mapStyle === "roadmap" ? (india ? "var(--map-land)" : "var(--map-neighbor)") : "none"}
+              stroke={india ? "var(--map-border)" : "var(--map-border-muted)"}
+              strokeWidth={india ? 1.05 : .55}
+              strokeOpacity={mapStyle === "satellite" ? .6 : .95}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
         </g>
-        <g className="map-grid" pointerEvents="none" aria-hidden="true">
-          {longitudes.map((lng) => { const [x] = project([lng, 0]); return <line key={lng} x1={x} x2={x} y1="0" y2={size.height} />; })}
-          {latitudes.map((lat) => { const [, y] = project([0, lat]); return <line key={lat} x1="0" x2={size.width} y1={y} y2={y} />; })}
-        </g>
-        {national && showLabels && (
+
+        {national && (
           <g className="map-geography" aria-hidden="true" pointerEvents="none">
             <text x={project([81.5, 23.1])[0]} y={project([81.5, 23.1])[1]} className="map-country" textAnchor="middle">INDIA</text>
             <text x={project([67.3, 12.9])[0]} y={project([67.3, 12.9])[1]} textAnchor="middle" className="map-sea-label">Arabian Sea</text>
             <text x={project([88.5, 14.3])[0]} y={project([88.5, 14.3])[1]} textAnchor="middle" className="map-sea-label">Bay of Bengal</text>
-            {LOCAL_PLACES.map(({ name, point }) => {
-              const [x, y] = project([point[0], point[1]]);
-              return <g key={name}><circle cx={x} cy={y} r="1.8" fill="currentColor" />
-                <text x={x + 6} y={y + 3} className="map-city">{name}</text></g>;
-            })}
           </g>
         )}
+
         <rect width={size.width} height={size.height} fill="url(#map-vignette)" pointerEvents="none" />
+
         {visible.filter(drawFeature).map((feature, index) => {
           const d = geometryPath(feature.geometry, project);
           if (!d) return null;
           const color = mapColor(feature.properties);
           const isLine = feature.geometry.type === "LineString";
           const interactive = onSelect ? () => onSelect(feature) : undefined;
-          return <g key={feature.id ?? index} data-map-action="" className={interactive ? "map-feature" : undefined}
-            role={interactive ? "button" : undefined} tabIndex={interactive ? 0 : undefined}
-            aria-label={feature.properties.title} onClick={interactive}
-            onKeyDown={interactive ? (event) => activate(event, interactive) : undefined}>
-            <title>{feature.properties.title}</title>
-            {isLine && <path d={d} stroke="transparent" strokeWidth="15" fill="none" />}
-            <path d={d} fillRule="evenodd" fill={isLine ? "none" : color} fillOpacity={.23}
-              stroke={color} strokeWidth={isLine ? 3 : 1.4} strokeOpacity={isLine ? 1 : .78}
-              strokeLinecap="round" strokeDasharray={feature.properties.road_status === "CORRIDOR" ? "7 5" : undefined} />
-          </g>;
+          return (
+            <g
+              key={feature.id ?? index}
+              data-map-action=""
+              className={interactive ? "map-feature" : undefined}
+              role={interactive ? "button" : undefined}
+              tabIndex={interactive ? 0 : undefined}
+              aria-label={feature.properties.title}
+              onClick={interactive}
+              onKeyDown={interactive ? (event) => activate(event, interactive) : undefined}
+            >
+              <title>{feature.properties.title}</title>
+              {isLine && <path d={d} stroke="transparent" strokeWidth="15" fill="none" />}
+              <path
+                d={d}
+                fillRule="evenodd"
+                fill={isLine ? "none" : color}
+                fillOpacity={.23}
+                stroke={color}
+                strokeWidth={isLine ? 3 : 1.4}
+                strokeOpacity={isLine ? 1 : .78}
+                strokeLinecap="round"
+                strokeDasharray={feature.properties.road_status === "CORRIDOR" ? "7 5" : undefined}
+              />
+            </g>
+          );
         })}
-        {!national && routes.map((dispatch) => <path key={dispatch.dispatch_id}
-          d={geometryPath(dispatch.evacuation_corridor, project)} fill="none" stroke={ROUTE_COLOR}
-          strokeWidth="3" strokeDasharray="6 5" strokeOpacity=".9" pointerEvents="none" />)}
+
+        {!national && routes.map((dispatch) => (
+          <path
+            key={dispatch.dispatch_id}
+            d={geometryPath(dispatch.evacuation_corridor, project)}
+            fill="none"
+            stroke={ROUTE_COLOR}
+            strokeWidth="3"
+            strokeDasharray="6 5"
+            strokeOpacity=".9"
+            pointerEvents="none"
+          />
+        ))}
+
         {markers.map(({ id, label, point, color, shape, pulse, select, offset }) => {
           const [px, py] = project(point);
           const x = px + (offset?.[0] ?? 0);
           const y = py + (offset?.[1] ?? 0);
-          const anchor = REGION_LABEL_ANCHORS[id] ?? "middle";
-          const labelX = anchor === "end" ? -8 : anchor === "start" ? 8 : 0;
           if (x < -42 || x > size.width + 42 || y < -42 || y > size.height + 42) return null;
-          return <g key={id} transform={`translate(${x},${y})`} data-map-action=""
-            className={select ? "map-feature" : undefined} role={select ? "button" : undefined}
-            tabIndex={select ? 0 : undefined} aria-label={label} onClick={select}
-            onKeyDown={select ? (event) => activate(event, select) : undefined}>
-            <title>{label}</title>
-            <circle r="14" fill="transparent" />
-            {pulse && <circle r={national ? "15" : "13"} fill={color} opacity=".22" />}
-            <circle r={national ? "7" : "6"} fill={color} fillOpacity=".94" stroke="#0B1220" strokeWidth="2" />
-            {shape === "asset" && <path d="M-2.7 0 H2.7 M0 -2.7 V2.7" stroke="#15132a" strokeWidth="1.6" />}
-            {shape === "sos" && <path d="M0 -2.7 V.6 M0 2.5 v.3" stroke="#441019" strokeWidth="1.7" strokeLinecap="round" />}
-            {(showLabels && national && size.width > 480 && shape !== "sos" || id === "location") && (
-              <text x={labelX} y={-13} textAnchor={anchor} className="map-marker-label">{label}</text>
-            )}
-          </g>;
+          return (
+            <g
+              key={id}
+              transform={`translate(${x},${y})`}
+              data-map-action=""
+              className={select ? "map-feature" : undefined}
+              role={select ? "button" : undefined}
+              tabIndex={select ? 0 : undefined}
+              aria-label={label}
+              onClick={select}
+              onKeyDown={select ? (event) => activate(event, select) : undefined}
+            >
+              <title>{label}</title>
+              <circle r="14" fill="transparent" />
+              {pulse && <circle r={national ? "15" : "13"} fill={color} opacity=".22" />}
+              <circle r={national ? "7" : "6"} fill={color} fillOpacity=".94" stroke="#0B1220" strokeWidth="2" />
+              {shape === "asset" && <path d="M-2.7 0 H2.7 M0 -2.7 V2.7" stroke="#15132a" strokeWidth="1.6" />}
+              {shape === "sos" && <path d="M0 -2.7 V.6 M0 2.5 v.3" stroke="#441019" strokeWidth="1.7" strokeLinecap="round" />}
+            </g>
+          );
         })}
       </svg>
-      </div>
-      <div ref={googleHost} aria-hidden={!usingGoogle}
-        className={`google-map ${usingGoogle ? "google-map-visible" : ""}`} />
-      <div className="map-source"><Radar size={14} aria-hidden /> {googleBadge}</div>
-      <div className="map-types" role="group" aria-label="Map view">
-        {MODES.map(({ key, label }) => <button key={key} type="button" aria-pressed={mapStyle === key}
-          onClick={() => setMapStyle(key)}>{label}</button>)}
-      </div>
+
+      {/* 4. GOOGLE MAPS SURFACE */}
+      <div
+        ref={googleHost}
+        aria-hidden={!usingGoogle}
+        className={`google-map ${usingGoogle ? "google-map-visible" : ""}`}
+      />
+
+      {/* 5. TACTICAL RESPONSE SQUADS OVERLAY BADGES */}
+      {filterSquads && TACTICAL_EMERGENCIES.filter((e) => e.type === "squad").map((unit) => {
+        const [x, y] = project(unit.point);
+        if (x < -60 || x > size.width + 60 || y < -40 || y > size.height + 40) return null;
+        return (
+          <div
+            key={unit.id}
+            className={`tp-tactical-unit tp-squad-${unit.theme}`}
+            style={{ left: `${x}px`, top: `${y}px` }}
+            onClick={() => handleSelectEmergency(unit)}
+            role="button"
+            tabIndex={0}
+            title={unit.title}
+          >
+            <div className="tp-tactical-pill">
+              <span className="unit-icon">{unit.icon}</span>
+              <strong>{unit.badgeText?.replace(unit.icon, "").trim()}</strong>
+            </div>
+            <div className="tp-tactical-stem" />
+            <div className="tp-tactical-dot" />
+          </div>
+        );
+      })}
+
+      {/* 6. HAZARD MARKERS OVERLAY (⚠️, 🔥, 🌊) */}
+      {TACTICAL_EMERGENCIES.filter((e) => e.type === "hazard").map((hazard) => {
+        if (hazard.subType === "fire" && !filterThermal) return null;
+        if (hazard.subType === "wave" && !filterRadar) return null;
+        const [x, y] = project(hazard.point);
+        if (x < -40 || x > size.width + 40 || y < -40 || y > size.height + 40) return null;
+        return (
+          <div
+            key={hazard.id}
+            className={`tp-hazard-pin tp-hazard-${hazard.theme}`}
+            style={{ left: `${x}px`, top: `${y}px` }}
+            onClick={() => handleSelectEmergency(hazard)}
+            role="button"
+            tabIndex={0}
+            title={hazard.title}
+          >
+            <span className="tp-hazard-pulse-ring" />
+            <span className="tp-hazard-icon">{hazard.icon}</span>
+          </div>
+        );
+      })}
+
+      {/* 7. MAP NAVIGATION ZOOM BUTTONS */}
       <div className="map-controls" aria-label="Map controls">
         <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoom(1)}><Plus size={17} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoom(-1)}><Minus size={17} /></button>
         <button type="button" aria-label="Recenter map" title="Recenter map" onClick={recenter}><Crosshair size={16} /></button>
         {onLayers && <button type="button" aria-label="Map layers" title="Map layers" onClick={onLayers}><Layers3 size={16} /></button>}
-        {allowTilt && !usingGoogle && <button type="button" aria-label="Tilt map" aria-pressed={tilted}
-          title={tilted ? "Return to flat map" : "Tilt the bundled map"} onClick={() => setTilt(!tilt)}><Box size={16} /></button>}
+        {allowTilt && !usingGoogle && (
+          <button
+            type="button"
+            aria-label="Tilt map"
+            aria-pressed={tilt}
+            title={tilt ? "Return to flat map" : "Tilt the terrain map"}
+            onClick={() => setTilt(!tilt)}
+          >
+            <Box size={16} />
+          </button>
+        )}
       </div>
-      {!usingGoogle && <div className="map-scale" aria-label={`Map scale ${scaleKm} kilometers`}>
-        <span style={{ width: scaleKm / kmPerPixel }} /> <span>{scaleKm} km</span>
-      </div>}
-      {!usingGoogle && (hasScene ? <div className="map-credit map-credit-imagery">
-        <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">EOxCloudless</a> by <a href="https://eox.at/" target="_blank" rel="noreferrer">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2025) · <a href="https://maps.eox.at/" target="_blank" rel="noreferrer">EOX Maps</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a>
-      </div> : <div className="map-credit">{mapStyle === "roadmap" ? "Natural Earth" : "NASA Blue Marble · Natural Earth"}</div>)}
+
+      {/* 8. SCALE BAR */}
+      {!usingGoogle && (
+        <div className="map-scale" aria-label={`Map scale ${scaleKm} kilometers`}>
+          <span style={{ width: scaleKm / kmPerPixel }} /> <span>{scaleKm} km</span>
+        </div>
+      )}
+
+      {/* 9. BOTTOM TELEMETRY HUD BAR */}
+      <div className="map-hud-bar" role="status" aria-label="Satellite Telemetry HUD">
+        <div className="hud-col hud-mgrs">
+          <span className="hud-badge-tag">43Q</span>
+          <span className="hud-mgrs-text">
+            <Crosshair size={11} className="hud-cyan-icon" /> MGRS: <strong>6636 2965</strong>
+          </span>
+        </div>
+
+        <div className="hud-sep" />
+
+        <div className="hud-col hud-coords">
+          <div className="hud-coord-line">LAT: <strong>{currentLat}°</strong></div>
+          <div className="hud-coord-line">LNG: <strong>{currentLng}°</strong></div>
+        </div>
+
+        <div className="hud-sep" />
+
+        <div className="hud-col hud-satellite">
+          <span className="hud-sat-title">SENTINEL-2 / EOS-06</span>
+          <span className="hud-sat-status">
+            <span className="hud-green-dot" /> MULTISPECTRAL FEED: ONLINE
+          </span>
+        </div>
+
+        <div className="hud-sep" />
+
+        <div className="hud-col hud-clocks">
+          <span className="hud-zulu">
+            <Clock size={11} className="hud-clock-icon" /> ZULU: <strong>{clocks.zulu} UTC</strong>
+          </span>
+          <span className="hud-ist">
+            | <strong>{clocks.ist} IST</strong>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

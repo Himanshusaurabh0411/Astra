@@ -19,7 +19,8 @@ export interface Brief {
   center: Point;
 }
 
-export function formatNumber(value: number, decimals = 0): string {
+export function formatNumber(value: number | undefined | null, decimals = 0): string {
+  if (value === undefined || value === null || Number.isNaN(value)) return "0";
   return value.toLocaleString("en-IN", { maximumFractionDigits: decimals });
 }
 
