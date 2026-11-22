@@ -36,11 +36,13 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    return [
-      { source: "/api/:path*", destination: `${upstream}/api/:path*` },
-      { source: "/health", destination: `${upstream}/health` },
-      { source: "/ws/live", destination: `${upstream}/ws/live` },
-    ];
+    return {
+      fallback: [
+        { source: "/api/:path*", destination: `${upstream}/api/:path*` },
+        { source: "/health", destination: `${upstream}/health` },
+        { source: "/ws/live", destination: `${upstream}/ws/live` },
+      ],
+    };
   },
   async headers() {
     return [
