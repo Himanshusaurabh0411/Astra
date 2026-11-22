@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   BarChart3, Bell, ChevronDown, CloudRain, CloudSun, FileText, Globe2, Home, Landmark, Layers3, MapPin, Menu,
   Radio, RotateCcw, Send, Settings2, ShieldCheck, Sprout, WifiOff, X,
@@ -234,7 +235,7 @@ export default function Dashboard() {
 
   const sendRoute = (area = brief.region) => run("Sending safe route…", async () => {
     const corridorId = selection?.kind === "feature" && selection.feature.properties.road_status === "CORRIDOR" ? selection.feature.id : undefined;
-    const targetRegion = area.id === INDIA.id ? getRegion("central-india") : area;
+    const targetRegion = region.id !== INDIA.id ? region : area.id !== INDIA.id ? area : getRegion("central-india");
     const dispatch = await pushEvacuationDispatch({ region: targetRegion.id, corridor_id: corridorId });
     const title = dispatch.saved_locally ? "Route saved on this device" : "Safe route shared";
     const detail = dispatch.saved_locally ? `${dispatch.safe_asset.name} is available in the local map.`
@@ -278,10 +279,10 @@ export default function Dashboard() {
             aria-current={nav === id ? "page" : undefined}><Icon size={18} /><span>{label}</span>
             {id === "alerts" && alertCount > 0 && <small className="tp-nav-count">{alertCount}</small>}
           </button>)}
-          <a href={`/field?region=${region.id}`}><Radio size={18} /><span>Field Responder</span></a>
-          <a href="/weather"><CloudSun size={18} /><span>India Weather</span></a>
-          <a href={`/farm?region=${region.id}`}><Sprout size={18} /><span>Farm Planner</span></a>
-          <a href="/government"><Landmark size={18} /><span>Government Portal</span></a>
+          <Link href={`/field?region=${region.id}`}><Radio size={18} /><span>Field Responder</span></Link>
+          <Link href="/weather"><CloudSun size={18} /><span>India Weather</span></Link>
+          <Link href={`/farm?region=${region.id}`}><Sprout size={18} /><span>Farm Planner</span></Link>
+          <Link href="/government"><Landmark size={18} /><span>Government Portal</span></Link>
           <button type="button" onClick={() => showNav("settings")} aria-current={nav === "settings" ? "page" : undefined}>
             <Settings2 size={18} /><span>Settings</span>
           </button>

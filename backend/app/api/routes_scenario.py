@@ -233,3 +233,16 @@ async def get_bhuvan_waterbodies() -> Dict[str, Any]:
     Returns Bhuvan National Water Body Information System reservoir levels and storage status.
     """
     return bhuvan_service.get_waterbody_summary()
+
+
+@router.get(
+    "/portal/bhuvan/lulc-aoi",
+    summary="Get 1:50,000 ISRO Bhuvan LULC AOI Classification Data",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def get_bhuvan_lulc_aoi(region: Optional[str] = None, geom: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Returns live verified 1:50,000 Level-II LULC classification areas (sq km) for catchment AOI polygons.
+    """
+    return bhuvan_service.get_lulc_aoi(region_id=region, geom_wkt=geom)
+

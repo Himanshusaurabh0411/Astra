@@ -485,20 +485,44 @@ export async function pushEvacuationDispatch(body: DispatchRequest): Promise<Dis
   } catch (error) {
     fallbackError(error);
     const targetRegion = body.region && body.region !== INDIA.id ? body.region : "central-india";
+    let safeName = body.safe_asset_name;
+    let safeLat = body.safe_lat;
+    let safeLng = body.safe_lng;
+    let path = body.corridor_coordinates;
+
     const pair = routePair(localState, targetRegion, body.corridor_id);
-    const point = pair ? featurePoint(pair.asset) : [body.safe_lng ?? 77.215, body.safe_lat ?? 23.238];
-    const lng = point[0];
-    const lat = point[1];
-    const path = body.corridor_coordinates ?? pair?.path ?? [
-      [77.05, 23.18], [77.12, 23.20], [77.18, 23.22], [77.215, 23.238]
-    ];
+    if (!path || !safeName) {
+      if (pair) {
+        const point = featurePoint(pair.asset);
+        safeLng = point[0];
+        safeLat = point[1];
+        safeName = pair.asset.properties.title;
+        path = pair.path;
+      } else if (targetRegion === "brahmaputra" || targetRegion.includes("assam")) {
+        safeName = "Chandrapur High-Ground Evacuation Shelter (Guwahati)";
+        safeLng = 91.920;
+        safeLat = 26.190;
+        path = [[91.740, 26.140], [91.810, 26.160], [91.870, 26.180], [91.920, 26.190]];
+      } else if (targetRegion === "western-ghats" || targetRegion.includes("wayanad")) {
+        safeName = "Vythiri High-Elevation Relief Command Center (Wayanad)";
+        safeLng = 76.040;
+        safeLat = 11.550;
+        path = [[76.130, 11.500], [76.090, 11.520], [76.060, 11.540], [76.040, 11.550]];
+      } else {
+        safeName = "Kothri Kalan Community Relief Centre";
+        safeLng = 77.215;
+        safeLat = 23.238;
+        path = [[77.05, 23.18], [77.12, 23.20], [77.18, 23.22], [77.215, 23.238]];
+      }
+    }
+
     const data: DispatchVector = {
       dispatch_id: `DSP-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
       issued_at: new Date().toISOString(),
       mode: localState.mode,
       target_zone_id: body.target_zone_id ?? targetRegion,
-      alert_headline: body.alert_headline ?? "Follow the marked exercise route to the relief point.",
-      safe_asset: { name: body.safe_asset_name ?? pair?.asset.properties.title ?? "Kothri Kalan Community Shelter", lat, lng },
+      alert_headline: body.alert_headline ?? `Follow marked higher-ground corridor to ${safeName}.`,
+      safe_asset: { name: safeName, lat: safeLat ?? 23.238, lng: safeLng ?? 77.215 },
       evacuation_corridor: { type: "LineString", coordinates: path },
       payload_kb: 0,
       saved_locally: true,

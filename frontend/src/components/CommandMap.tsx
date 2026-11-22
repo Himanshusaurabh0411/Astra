@@ -210,7 +210,7 @@ const MAJOR_RIVERS: { name: string; path: Point[] }[] = [
 ];
 
 const ENGINE_TITLES: Record<MapStyle, { name: string; count: string }> = {
-  hybrid: { name: "Google Maps Satellite Engine", count: "9 Emergencies Mapped" },
+  hybrid: { name: "TerraPulse Multispectral GeoEngine", count: "9 Emergencies Mapped" },
   satellite: { name: "Sentinel-2 / Landsat Satellite Feed", count: "Multi-Spectral Band 8A" },
   terrain: { name: "Cartosat DEM Topographic Elevation", count: "Shaded Relief Active" },
   roadmap: { name: "National Highway Logistics Grid", count: "All Corridors Open" },
@@ -523,6 +523,82 @@ export default function CommandMap({
     : [...pointMarkers, ...sosMarkers];
   if (location) markers.push({ id: "location", label: "My location", point: location, color: PULSE_COLOR });
 
+  // Dynamic high-resolution basemap tiles (ArcGIS Satellite, Topo, CartoDB Roadmap)
+  const mapTiles = useMemo(() => {
+    if (offline) return [];
+
+    // Derive target Web Mercator zoom level from current scale
+    const targetZ = Math.round(Math.log2(Math.max(1, (sx * 360) / 256)));
+    const z = Math.max(3, Math.min(15, targetZ));
+    const numTiles = 2 ** z;
+
+    const [west, north] = unproject(0, 0);
+    const [east, south] = unproject(size.width, size.height);
+
+    const minLng = Math.max(-180, Math.min(180, Math.min(west, east)));
+    const maxLng = Math.max(-180, Math.min(180, Math.max(west, east)));
+    const minLat = Math.max(-85, Math.min(85, Math.min(north, south)));
+    const maxLat = Math.max(-85, Math.min(85, Math.max(north, south)));
+
+    const minTileX = Math.max(0, Math.floor(((minLng + 180) / 360) * numTiles));
+    const maxTileX = Math.min(numTiles - 1, Math.floor(((maxLng + 180) / 360) * numTiles));
+
+    const latToTileY = (lat: number) => {
+      const rad = Math.max(-85, Math.min(85, lat)) * (Math.PI / 180);
+      return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) * (numTiles / 2);
+    };
+
+    const minTileY = Math.max(0, Math.floor(latToTileY(maxLat)));
+    const maxTileY = Math.min(numTiles - 1, Math.floor(latToTileY(minLat)));
+
+    // Clamp tile count to maintain 60 FPS
+    if ((maxTileX - minTileX + 1) * (maxTileY - minTileY + 1) > 42) {
+      return [];
+    }
+
+    const items: { id: string; url: string; overlayUrl?: string; x: number; y: number; width: number; height: number }[] = [];
+
+    for (let tx = minTileX; tx <= maxTileX; tx++) {
+      for (let ty = minTileY; ty <= maxTileY; ty++) {
+        const tWest = (tx / numTiles) * 360 - 180;
+        const tEast = ((tx + 1) / numTiles) * 360 - 180;
+        const tNorth = (Math.atan(Math.sinh(Math.PI * (1 - (2 * ty) / numTiles))) * 180) / Math.PI;
+        const tSouth = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + 1)) / numTiles))) * 180) / Math.PI;
+
+        const [left, top] = project([tWest, tNorth]);
+        const [right, bottom] = project([tEast, tSouth]);
+        const width = Math.ceil(right - left) + 1;
+        const height = Math.ceil(bottom - top) + 1;
+
+        let url = "";
+        let overlayUrl: string | undefined;
+
+        if (mapStyle === "satellite") {
+          url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
+        } else if (mapStyle === "hybrid") {
+          url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
+          overlayUrl = `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/${z}/${ty}/${tx}`;
+        } else if (mapStyle === "terrain") {
+          url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${ty}/${tx}`;
+        } else if (mapStyle === "roadmap") {
+          url = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${z}/${tx}/${ty}.png`;
+        }
+
+        items.push({
+          id: `${mapStyle}-${z}-${tx}-${ty}`,
+          url,
+          overlayUrl,
+          x: left,
+          y: top,
+          width,
+          height,
+        });
+      }
+    }
+
+    return items;
+  }, [offline, sx, size.width, size.height, mapStyle, ox, oy, view.scale, view.center]);
+
   const recenter = () => {
     if (animation.current !== undefined) cancelAnimationFrame(animation.current);
     setView({ center: target.center, scale: Math.max(2, scaleFor(target, size)) });
@@ -703,7 +779,7 @@ export default function CommandMap({
           fill={mapStyle === "roadmap" ? "#0a1322" : mapStyle === "satellite" ? "#020617" : "var(--map-sea)"}
         />
 
-        {/* Subcontinent Terrain/Satellite Image */}
+        {/* Subcontinent Terrain/Satellite Fallback Image */}
         {mapStyle !== "roadmap" && (
           <image
             href="/india-terrain.webp"
@@ -714,6 +790,34 @@ export default function CommandMap({
             preserveAspectRatio="none"
             className={`map-img-${mapStyle}`}
           />
+        )}
+
+        {/* Dynamic High-Definition Tile Layer (ArcGIS Satellite / Hybrid / Topo / Roadmap) */}
+        {!offline && mapTiles.length > 0 && (
+          <g className="map-tiles-layer" pointerEvents="none">
+            {mapTiles.map((tile) => (
+              <g key={tile.id}>
+                <image
+                  href={tile.url}
+                  x={tile.x}
+                  y={tile.y}
+                  width={tile.width}
+                  height={tile.height}
+                  preserveAspectRatio="none"
+                />
+                {tile.overlayUrl && (
+                  <image
+                    href={tile.overlayUrl}
+                    x={tile.x}
+                    y={tile.y}
+                    width={tile.width}
+                    height={tile.height}
+                    preserveAspectRatio="none"
+                  />
+                )}
+              </g>
+            ))}
+          </g>
         )}
 
         {/* Live Sentinel-2 Scene Layer when active */}
