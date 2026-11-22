@@ -1,0 +1,67 @@
+{
+  "product_id": "VEDAS_CARTOSAT_DEM_ROAD_PROFILE",
+  "dataset": "Cartosat-1/Cartosat-2 High-Resolution DEM",
+  "resolution_m": 2.5,
+  "generated_at_utc": "2026-11-22T02:00:00Z",
+  "basin": "Kothri Kalan / Sehore / Bhopal Basin (Madhya Pradesh)",
+  "datum": "WGS84 / UTM 43N",
+  "dem_min_elevation_m": 458.0,
+  "dem_max_elevation_m": 535.0,
+  "roads": [
+    {
+      "road_id": "VEDAS-ROAD-CAUSEWAY-02",
+      "name": "Sevan River Low Causeway Crossing (Ichhawar Link)",
+      "elevation_m": 462.5,
+      "flood_depth_threshold_m": 0.40,
+      "length_km": 1.85,
+      "slope_deg": 1.2,
+      "surface_type": "Submersible Concrete Causeway",
+      "drainage_zone": "Sevan River Active Channel Inflow",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.035, 23.082],
+          [77.048, 23.087],
+          [77.062, 23.091]
+        ]
+      }
+    },
+    {
+      "road_id": "VEDAS-ROAD-SH18-01",
+      "name": "State Highway 18 / NH-46 Elevated Highway Corridor",
+      "elevation_m": 498.2,
+      "flood_depth_threshold_m": 1.80,
+      "length_km": 14.2,
+      "slope_deg": 0.8,
+      "surface_type": "4-Lane Elevated Bituminous Highway",
+      "drainage_zone": "Upper Catchment Inter-Basin Ridge",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.015, 23.105],
+          [77.150, 23.150],
+          [77.280, 23.210]
+        ]
+      }
+    },
+    {
+      "road_id": "VEDAS-CORRIDOR-RIDGE-01",
+      "name": "Cartosat DEM High Ridge Evacuation Bypass (514m AMSL)",
+      "elevation_m": 514.0,
+      "flood_depth_threshold_m": 3.80,
+      "length_km": 6.4,
+      "slope_deg": 2.4,
+      "surface_type": "All-Weather Natural Crest Ridge Road",
+      "drainage_zone": "High Crest Watershed Boundary (Zero Stagnation)",
+      "safe_destination": "VIT Bhopal University Auditorium Relief Shelter",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [77.032, 23.085],
+          [77.025, 23.082],
+          [77.016, 23.0805]
+        ]
+      }
+    }
+  ]
+}

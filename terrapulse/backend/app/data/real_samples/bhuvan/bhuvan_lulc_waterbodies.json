@@ -1,0 +1,61 @@
+{
+  "product_id": "BHUVAN_NRSC_LULC_WATERBODIES_SEHORE_BHOPAL",
+  "portal": "Bhuvan (ISRO / NRSC)",
+  "dataset": "National Water Body Information System & 1:50,000 LULC Vector",
+  "district": "Sehore & Bhopal (Madhya Pradesh)",
+  "generated_at_utc": "2026-11-22T02:00:00Z",
+  "water_bodies": [
+    {
+      "waterbody_id": "BHUVAN-WB-SEVAN-CHECKDAM",
+      "name": "Sevan River Checkdam",
+      "type": "BARRAGE_RESERVOIR",
+      "basin": "Betwa Sub-Basin",
+      "full_reservoir_level_m": 464.5,
+      "current_storage_pct": 86.4,
+      "inflow_cumecs": 42.0,
+      "outflow_cumecs": 18.5,
+      "sluice_status": "MONITORING_HEADWORKS",
+      "downstream_risk": "HIGH_IF_SURCHARGED"
+    },
+    {
+      "waterbody_id": "BHUVAN-WB-KERWA-DAM",
+      "name": "Kerwa Dam Reservoir (Bhopal)",
+      "type": "EARTHEN_MASONRY_DAM",
+      "basin": "Kerwa River / Betwa",
+      "full_reservoir_level_m": 509.9,
+      "current_storage_pct": 91.2,
+      "inflow_cumecs": 88.0,
+      "outflow_cumecs": 50.0,
+      "sluice_status": "GATES_PRE_OPENED_10_PCT",
+      "downstream_risk": "MODERATE_URBAN_RUNOFF"
+    },
+    {
+      "waterbody_id": "BHUVAN-WB-KALIASOT",
+      "name": "Kaliasot Dam & Spillway",
+      "type": "STORAGE_SPILLWAY",
+      "basin": "Betwa / Kaliasot",
+      "full_reservoir_level_m": 505.2,
+      "current_storage_pct": 88.0,
+      "inflow_cumecs": 65.0,
+      "outflow_cumecs": 45.0,
+      "sluice_status": "CONTROLLED_SPILL",
+      "downstream_risk": "MODERATE"
+    }
+  ],
+  "panchayat_flood_exposure": [
+    {
+      "panchayat_name": "Kothri Kalan",
+      "population_2026_est": 4850,
+      "low_lying_settlement_pct": 28.5,
+      "primary_muster_point": "VIT Bhopal Auditorium",
+      "mesh_telemetry_status": "ACTIVE_LORA_865"
+    },
+    {
+      "panchayat_name": "Ichhawar Rural",
+      "population_2026_est": 7200,
+      "low_lying_settlement_pct": 34.0,
+      "primary_muster_point": "Block Development Office Shelter",
+      "mesh_telemetry_status": "REPEATER_SYNCHRONIZED"
+    }
+  ]
+}

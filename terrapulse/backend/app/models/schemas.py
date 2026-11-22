@@ -86,6 +86,18 @@ class MeshSyncStatus(str, Enum):
 # GeoJSON Feature Collection Models (geojson_feature.schema.json)
 # ==============================================================================
 
+class LayerProvenance(BaseModel):
+    """Provenance tracking per authoritative ISRO spatial layer."""
+    model_config = ConfigDict(extra="allow")
+
+    source_portal: str  # "MOSDAC", "Bhoonidhi", "VEDAS", "Bhuvan"
+    ingestion_mode: str = "seed_fallback"  # "live_portal", "local_sample", "seed_fallback", "simulation_spike"
+    sensor: Optional[str] = None
+    status: str = "SYNCHRONIZED"
+    features_count: int = 0
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class GeoJsonMetadata(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -96,6 +108,7 @@ class GeoJsonMetadata(BaseModel):
     rainfall_threshold_mm_hr: float = 15.0
     basin_name: Optional[str] = "Kothri Kalan / Sehore / Bhopal Basin (Madhya Pradesh)"
     bounding_box: Optional[List[float]] = [77.01, 23.07, 77.43, 23.27]
+    layer_provenance: Optional[Dict[str, LayerProvenance]] = None
 
 
 class GeoJsonGeometry(BaseModel):
@@ -121,6 +134,8 @@ class GeoJsonFeatureProperties(BaseModel):
     elevation_m: Optional[float] = None
     capacity: Optional[int] = None
     sensor: Optional[str] = None
+    data_source_origin: Optional[str] = None
+    source_portal: Optional[str] = None
 
 
 class GeoJsonFeature(BaseModel):

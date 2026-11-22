@@ -14,7 +14,7 @@ const policy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${devEval} ${google} blob:`,
   `style-src 'self' 'unsafe-inline' ${google}`,
-  `img-src 'self' data: blob: ${google}`,
+  `img-src 'self' data: blob: https://tiles.maps.eox.at ${google}`,
   "font-src 'self' https://fonts.gstatic.com data:",
   `connect-src 'self' ws: wss: ${google} ${publicApi}`,
   "worker-src 'self' blob:",

@@ -1,10 +1,10 @@
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.ws_live import ws_manager
-from app.models.schemas import OperationalMode, TerraPulseStateResponse
+from app.models.schemas import OperationalMode, ScenarioMode, TerraPulseStateResponse
 from app.models.state import state_store
 from app.services.bhoonidhi_service import bhoonidhi_service
 from app.services.bhuvan_service import bhuvan_service
@@ -41,32 +41,24 @@ async def trigger_rainfall_spike(req: RainfallSpikeRequest = RainfallSpikeReques
     5. Broadcasts updated state over WebSocket feed to Central Command and field devices.
     """
     try:
-        # 1. MOSDAC Rainfall Spike
-        new_rain = mosdac_service.trigger_rainfall_spike(
+        # 1. Execute unified space-to-ground cascade through TerraPulseStateStore
+        cascade_summary = state_store.execute_cascade(
+            rainfall_mm_hr=req.rainfall_mm_hr,
             multiplier=req.multiplier,
-            target_rain_mm_hr=req.rainfall_mm_hr,
+            trigger_source="simulation_spike",
         )
 
-        # 2. Bhoonidhi Microwave SAR Inundation Extraction
-        bhoonidhi_res = bhoonidhi_service.evaluate_flood_inundation(new_rain)
-        water_depth = bhoonidhi_res.get("peak_water_depth_m", 1.8)
-
-        # 3. VEDAS Cartosat DEM Road & Corridor Routing
-        vedas_service.evaluate_roads_and_corridors(water_depth_m=water_depth, rainfall_mm_hr=new_rain)
-
-        # 4. Bhuvan Cadastral Asset Triage
-        bhuvan_service.evaluate_critical_infrastructure(rainfall_mm_hr=new_rain, flood_depth_m=water_depth)
-
-        # 5. Compile State Response
+        # 2. Compile State Response with payload budget strictly enforced (<100 KB)
         state_response = state_store.get_state_response()
 
-        # 6. WebSocket Live Event Broadcast
+        # 3. WebSocket Live Event Broadcast
         await ws_manager.broadcast("state_updated", {
             "mode": state_response.mode,
             "kpis": state_response.kpis.model_dump(),
             "payload_kb": state_response.payload_kb,
-            "rainfall_mm_hr": new_rain,
-            "water_depth_m": water_depth,
+            "rainfall_mm_hr": cascade_summary.get("rainfall_mm_hr", 19.2),
+            "water_depth_m": cascade_summary.get("peak_water_depth_m", 1.8),
+            "cascade": cascade_summary,
         })
 
         logger.info(f"Full GeoAI cascade complete. Payload size: {state_response.payload_kb} KB (<100 KB target)")
@@ -93,6 +85,9 @@ async def switch_mode(req: ModeChangeRequest) -> TerraPulseStateResponse:
     routes over NavIC + LoRa 865 MHz peer-to-peer hops.
     """
     mesh_relay_service.switch_operational_mode(req.mode)
+    if req.mode == OperationalMode.CELL_BLACKOUT_MESH_ACTIVE and state_store.features_collection:
+        state_store.features_collection.metadata.scenario_mode = ScenarioMode.TELECOM_BLACKOUT_MESH
+
     state_response = state_store.get_state_response()
 
     # WebSocket Broadcast
@@ -124,3 +119,130 @@ async def reset_scenario() -> TerraPulseStateResponse:
     })
 
     return state_response
+
+
+@router.post(
+    "/portal/mosdac/ingest",
+    summary="Ingest Real/Sample MOSDAC Meteorological Precipitation Data",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def ingest_mosdac_data(override_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Ingests real meteorological data from MOSDAC API or local INSAT-3DS/GSMaP samples.
+    Falls back gracefully to seeded catchment baseline if portal is unavailable.
+    """
+    summary = mosdac_service.ingest_rainfall_data(override_url=override_url)
+    state_response = state_store.get_state_response()
+
+    await ws_manager.broadcast("mosdac_ingested", {
+        "summary": summary,
+        "kpis": state_response.kpis.model_dump(),
+        "payload_kb": state_response.payload_kb,
+    })
+    return summary
+
+
+@router.post(
+    "/portal/vedas/ingest",
+    summary="Ingest Real/Sample VEDAS Cartosat DEM Road & Drainage Profile",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def ingest_vedas_data(
+    water_depth_m: float = 0.0,
+    rainfall_mm_hr: float = 4.8,
+) -> Dict[str, Any]:
+    """
+    Ingests Cartosat DEM elevation profiles and calculates road submergence vs safe ridge corridors.
+    """
+    summary = vedas_service.ingest_terrain_and_roads(
+        water_depth_m=water_depth_m,
+        rainfall_mm_hr=rainfall_mm_hr,
+    )
+    state_response = state_store.get_state_response()
+
+    await ws_manager.broadcast("vedas_ingested", {
+        "summary": summary,
+        "kpis": state_response.kpis.model_dump(),
+        "payload_kb": state_response.payload_kb,
+    })
+    return summary
+
+
+@router.get(
+    "/portal/vedas/agri-stress",
+    summary="Get VEDAS Catchment Crop Condition & PMFBY Parametric Loss Summary",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def get_vedas_agri_stress() -> Dict[str, Any]:
+    """
+    Returns VEDAS agricultural drought, NDVI anomaly, and PMFBY parametric insurance eligibility.
+    """
+    return vedas_service.get_crop_stress_summary()
+
+
+@router.post(
+    "/portal/bhoonidhi/ingest",
+    summary="Ingest Real/Sample Bhoonidhi EOS-04 SAR Flood Inundation Data",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def ingest_bhoonidhi_data(
+    override_url: Optional[str] = None,
+    rainfall_mm_hr: float = 16.5,
+) -> Dict[str, Any]:
+    """
+    Ingests real/sample EOS-04 C-band SAR all-weather flood extraction polygons.
+    """
+    summary = bhoonidhi_service.ingest_sar_flood_data(
+        override_url=override_url,
+        rainfall_mm_hr=rainfall_mm_hr,
+    )
+    state_response = state_store.get_state_response()
+
+    await ws_manager.broadcast("bhoonidhi_ingested", {
+        "summary": summary,
+        "kpis": state_response.kpis.model_dump(),
+        "payload_kb": state_response.payload_kb,
+    })
+    return summary
+
+
+@router.post(
+    "/portal/bhuvan/ingest",
+    summary="Ingest Real/Sample Bhuvan Cadastral Facilities & POI Data",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def ingest_bhuvan_data(
+    override_url: Optional[str] = None,
+    rainfall_mm_hr: float = 4.8,
+    flood_depth_m: float = 0.0,
+) -> Dict[str, Any]:
+    """
+    Ingests critical facility points (hospitals, shelters, muster posts, schools, dams)
+    and evaluates multi-hazard exposure.
+    """
+    summary = bhuvan_service.ingest_critical_facilities(
+        override_url=override_url,
+        rainfall_mm_hr=rainfall_mm_hr,
+        flood_depth_m=flood_depth_m,
+    )
+    state_response = state_store.get_state_response()
+
+    await ws_manager.broadcast("bhuvan_ingested", {
+        "summary": summary,
+        "kpis": state_response.kpis.model_dump(),
+        "payload_kb": state_response.payload_kb,
+    })
+    return summary
+
+
+@router.get(
+    "/portal/bhuvan/waterbodies",
+    summary="Get Bhuvan Catchment Water Bodies & Reservoir Surcharge Status",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def get_bhuvan_waterbodies() -> Dict[str, Any]:
+    """
+    Returns Bhuvan National Water Body Information System reservoir levels and storage status.
+    """
+    return bhuvan_service.get_waterbody_summary()
+

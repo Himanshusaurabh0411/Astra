@@ -39,6 +39,11 @@ export interface SOSPacket {
   triage: TriageModel;
   mesh: MeshModel;
 }
+export interface SOSEmailNotice {
+  status: "manual" | "queued" | "sending" | "accepted" | "failed" | "uncertain" | "cancelled";
+  draft?: { to: string; subject: string; body: string };
+}
+export interface SOSReceipt extends SOSPacket { email_notification?: SOSEmailNotice }
 export type GeoJsonGeometry =
   | { type: "Point"; coordinates: Point }
   | { type: "LineString"; coordinates: Point[] }
@@ -260,7 +265,7 @@ let localState = localSeed();
 let fetched = false;
 let fetchGeneration = 0;
 let pendingSnapshot: Promise<TerraPulseStateResponse> | undefined;
-let pendingSosSync: Promise<SOSPacket[]> | undefined;
+let pendingSosSync: Promise<SOSReceipt[]> | undefined;
 
 export function compileLocalState() {
   return localState;
@@ -496,12 +501,12 @@ export async function pushEvacuationDispatch(body: DispatchRequest): Promise<Dis
   }
 }
 
-export async function submitSOSPacket(packet: SOSPacket, queueOnly = false): Promise<SOSPacket> {
+export async function submitSOSPacket(packet: SOSPacket, queueOnly = false): Promise<SOSReceipt> {
   if (!queueOnly && localState.mode !== "CELL_BLACKOUT_MESH_ACTIVE") {
     try {
-      const saved = await request<SOSPacket>("/api/sos", packet);
+      const { email_notification, ...saved } = await request<SOSReceipt>("/api/sos", packet);
       localState = { ...localState, sos_packets: [...localState.sos_packets.filter((p) => p.sos_id !== saved.sos_id), saved] };
-      return saved;
+      return { ...saved, email_notification };
     } catch (error) {
       fallbackError(error);
     }
@@ -510,16 +515,16 @@ export async function submitSOSPacket(packet: SOSPacket, queueOnly = false): Pro
   return packet;
 }
 
-export async function syncQueuedSOS(): Promise<SOSPacket[]> {
+export async function syncQueuedSOS(): Promise<SOSReceipt[]> {
   if (!pendingSosSync) {
     pendingSosSync = (async () => {
       const queued = await getQueuedOfflineSOS();
       const waiting = queued.filter((packet) => packet.mesh.sync_status !== "SYNCED_COMMAND");
       if (!waiting.length || !navigator.onLine || localState.connection !== "api"
         || localState.mode === "CELL_BLACKOUT_MESH_ACTIVE") return [];
-      const received: SOSPacket[] = [];
+      const received: SOSReceipt[] = [];
       for (let i = 0; i < waiting.length; i += 50) {
-        const batch = await request<SOSPacket[]>("/api/sos", waiting.slice(i, i + 50));
+        const batch = await request<SOSReceipt[]>("/api/sos", waiting.slice(i, i + 50));
         const acknowledged = batch.filter((p) => p.mesh.sync_status === "SYNCED_COMMAND");
         await removeQueuedSOS(acknowledged.map((p) => p.sos_id));
         received.push(...acknowledged);

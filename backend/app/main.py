@@ -12,10 +12,12 @@ from app.api.routes_state import health_check, router as state_router
 from app.api.routes_weather import router as weather_router
 from app.api.ws_live import router as ws_router
 from app.config import settings
+from app.services.sos_email import lifespan
 
 logger = logging.getLogger("terrapulse")
 
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     version=settings.VERSION,
     description="India disaster-monitoring and field rescue exercise API.",

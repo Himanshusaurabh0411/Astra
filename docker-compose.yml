@@ -16,6 +16,13 @@ services:
       DEFAULT_SCENARIO_MODE: ${DEFAULT_SCENARIO_MODE:-NORMAL}
       SEED_DATA_PATH: ${SEED_DATA_PATH:-}
       GOVERNMENT_ACCOUNTS: ${GOVERNMENT_ACCOUNTS:-}
+      SOS_EMAIL_TO: ${SOS_EMAIL_TO:-}
+      SOS_EMAIL_FROM: ${SOS_EMAIL_FROM:-}
+      SOS_SMTP_HOST: ${SOS_SMTP_HOST:-}
+      SOS_SMTP_PORT: ${SOS_SMTP_PORT:-587}
+      SOS_SMTP_SECURITY: ${SOS_SMTP_SECURITY:-starttls}
+      SOS_SMTP_USER: ${SOS_SMTP_USER:-}
+      SOS_SMTP_PASSWORD: ${SOS_SMTP_PASSWORD:-}
       OPEN_METEO_API_KEY: ${OPEN_METEO_API_KEY:-}
       PORTAL_FETCH_TIMEOUT_SECONDS: ${PORTAL_FETCH_TIMEOUT_SECONDS:-3.0}
       MOSDAC_API_URL: ${MOSDAC_API_URL:-}
@@ -36,6 +43,8 @@ services:
       LORA_BANDWIDTH_KHZ: ${LORA_BANDWIDTH_KHZ:-125}
       MAX_MESH_HOPS: ${MAX_MESH_HOPS:-7}
       NAVIC_ENABLED: ${NAVIC_ENABLED:-true}
+    volumes:
+      - sos-email:/app/var
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
       interval: 5s
@@ -63,3 +72,6 @@ services:
       retries: 8
       start_period: 5s
     restart: unless-stopped
+
+volumes:
+  sos-email:

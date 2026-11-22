@@ -240,6 +240,9 @@
 .map-scale { bottom: 9px; left: 10px; padding: 4px 6px; font: 9px 'JetBrains Mono', ui-monospace, monospace; }
 .map-scale span:first-child { display: block; height: 5px; border: 1px solid #ddeaf1; border-top: 0; }
 .map-credit { right: 8px; bottom: 8px; padding: 3px 5px; font-size: 9px; color: #d8e4ec; }
+.map-credit-imagery { display: block; max-width: min(63%, 440px); white-space: normal; font-size: 10px; line-height: 1.35; }
+.map-credit-imagery a { color: #cae9fc; text-decoration: underline; text-underline-offset: 2px; }
+.map-canvas[data-style="satellite"] .map-grid { visibility: hidden; }
 .tp-map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-height: 43px; padding: 8px 14px; color: var(--tp-secondary); font-size: 12px; }
 .tp-map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .tp-map-legend i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }

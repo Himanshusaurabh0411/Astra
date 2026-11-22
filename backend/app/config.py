@@ -1,3 +1,4 @@
+from email.headerregistry import Address
 from math import isfinite
 from pathlib import Path
 from typing import Literal
@@ -32,6 +33,14 @@ class Settings(BaseSettings):
     CONTRACTS_DIR: str | None = None
     GOVERNMENT_ACCOUNTS: SecretStr | None = None
     OPEN_METEO_API_KEY: SecretStr | None = None
+    SOS_EMAIL_TO: str | None = None
+    SOS_EMAIL_FROM: str | None = None
+    SOS_SMTP_HOST: str | None = None
+    SOS_SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    SOS_SMTP_SECURITY: Literal["starttls", "ssl"] = "starttls"
+    SOS_SMTP_USER: str | None = None
+    SOS_SMTP_PASSWORD: SecretStr | None = None
+    SOS_EMAIL_DB: Path = APP_DIR.parent / "var" / "sos-email.sqlite3"
     PORTAL_FETCH_TIMEOUT_SECONDS: float = Field(default=3.0, gt=0, le=15)
     PORTAL_MAX_RESPONSE_BYTES: int = Field(default=5_000_000, ge=1024, le=25_000_000)
 
@@ -54,6 +63,21 @@ class Settings(BaseSettings):
     LORA_BANDWIDTH_KHZ: float = Field(default=125.0, gt=0)
     MAX_MESH_HOPS: int = Field(default=7, ge=1, le=15)
     NAVIC_ENABLED: bool = True
+
+    @field_validator("SOS_EMAIL_TO", "SOS_EMAIL_FROM")
+    @classmethod
+    def validate_mailbox(cls, value: str | None) -> str | None:
+        if not value or not value.strip():
+            return None
+        if not value.isascii() or any(ord(char) < 32 for char in value):
+            raise ValueError("Use a single email address.")
+        try:
+            address = Address(addr_spec=value.strip())
+        except (ValueError, IndexError) as error:
+            raise ValueError("Use a single email address.") from error
+        if not address.domain or not address.username:
+            raise ValueError("Use a complete email address.")
+        return address.addr_spec
 
     @field_validator("INDIA_BBOX")
     @classmethod

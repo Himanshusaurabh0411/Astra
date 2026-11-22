@@ -18,6 +18,7 @@ export interface GoogleMap {
   setZoom(zoom: number): void;
   setMapTypeId(type: MapStyle): void;
   panTo(center: GooglePoint): void;
+  addListener(event: "click", callback: (event: { latLng?: { lat(): number; lng(): number } | null }) => void): GoogleListener;
   addListener(event: string, callback: () => void): GoogleListener;
 }
 interface GeocoderResult {

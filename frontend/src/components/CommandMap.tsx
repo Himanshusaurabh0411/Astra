@@ -9,6 +9,7 @@ import {
   featurePoint, featureRegion, type DispatchVector, type GeoJsonFeature, type GeoJsonGeometry, type SOSPacket,
 } from "@/lib/terrapulseClient";
 import { mapColor, type ActiveLayers } from "@/lib/layers";
+import { useSatelliteFrame } from "@/lib/satelliteImagery";
 
 export interface MapTarget {
   center: Point;
@@ -218,6 +219,18 @@ export default function CommandMap({
   const routes = activeLayers.vedas_corridors ? dispatches : [];
   const usingGoogle = googleStatus === "ready" && !offline;
   const tilted = allowTilt && tilt && !usingGoogle;
+  const satelliteFrame = useSatelliteFrame(!offline && mapStyle !== "roadmap" && (!HAS_GOOGLE_MAPS || googleStatus === "fallback"),
+    dragging, view.center, view.scale, size.width, size.height);
+
+  useEffect(() => {
+    if (!usingGoogle || !onPoint) return;
+    const listener = googleMap.current?.addListener("click", ({ latLng }) => {
+      if (!latLng) return;
+      const point: Point = [latLng.lng(), latLng.lat()];
+      if (inBounds(point, INDIA.bbox)) onPoint(point);
+    });
+    return () => listener?.remove();
+  }, [usingGoogle, onPoint]);
 
   useEffect(() => {
     if (!usingGoogle || !googleMap.current || !window.google) return;
@@ -265,8 +278,11 @@ export default function CommandMap({
   const project = ([lng, lat]: Point): Point => [ox + lng * sx, oy - lat * view.scale];
   const unproject = (x: number, y: number): Point => [(x - ox) / sx, (oy - y) / view.scale];
   const [pictureX, pictureY] = project([boundsForImage[0], boundsForImage[3]]);
+  const scene = satelliteFrame?.bounds;
+  const hasScene = scene && ox + scene[2] * sx > 0 && ox + scene[0] * sx < size.width
+    && oy - scene[1] * view.scale > 0 && oy - scene[3] * view.scale < size.height;
   const national = view.scale <= 23;
-  const showLabels = mapStyle !== "satellite" || national;
+  const showLabels = mapStyle !== "satellite";
   const drawFeature = (feature: GeoJsonFeature) =>
     feature.geometry.type !== "Point" && (!national || feature.properties.layer === "bhoonidhi_flood");
   const pointMarkers: Marker[] = visible.filter((f) => f.geometry.type === "Point").map((f, index) => ({
@@ -360,7 +376,7 @@ export default function CommandMap({
   const kmPerPixel = 111.32 / Math.max(1, view.scale * (tilted ? TERRAIN_VIEW.zoom : 1));
   const scaleKm = [1000, 500, 250, 100, 50, 25, 10, 5, 2, 1].find((km) => km / kmPerPixel <= 106) ?? .5;
   const googleBadge = usingGoogle ? "Google Maps" : googleStatus === "loading" ? "Loading Google Maps…" : (
-    mapStyle === "roadmap" ? "India basemap" : "NASA terrain"
+    mapStyle === "roadmap" ? "India basemap" : hasScene ? "Sentinel-2 · 2025 mosaic" : "NASA terrain"
   );
   const gridStep = national ? 5 : view.scale < 150 ? 1 : .1;
   const firstLongitude = Math.ceil((view.center[0] - size.width / 2 / sx) / gridStep) * gridStep;
@@ -369,7 +385,7 @@ export default function CommandMap({
   const latitudes = Array.from({ length: Math.ceil(size.height / view.scale / gridStep) }, (_, index) => firstLatitude + index * gridStep);
 
   return (
-    <div className="map-canvas" ref={shell} aria-label={`Interactive map of ${target.label}`}>
+    <div className="map-canvas" data-style={mapStyle} ref={shell} aria-label={`Interactive map of ${target.label}`}>
       <div hidden={usingGoogle} className={`map-surface${dragging ? " dragging" : ""}`}
         onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag}
         onLostPointerCapture={stopDrag}>
@@ -388,6 +404,8 @@ export default function CommandMap({
             width={(boundsForImage[2] - boundsForImage[0]) * sx}
             height={(boundsForImage[3] - boundsForImage[1]) * view.scale} preserveAspectRatio="none" />
         )}
+        {hasScene && satelliteFrame && <image href={satelliteFrame.url} x={ox + scene[0] * sx} y={oy - scene[3] * view.scale}
+          width={(scene[2] - scene[0]) * sx} height={(scene[3] - scene[1]) * view.scale} preserveAspectRatio="none" />}
         <g transform={`matrix(${sx} 0 0 ${-view.scale} ${ox} ${oy})`} pointerEvents="none">
           {borderPaths.map(({ path, india }, index) => <path key={index} d={path}
             fill={mapStyle === "roadmap" ? india ? "var(--map-land)" : "var(--map-neighbor)" : "none"}
@@ -398,12 +416,12 @@ export default function CommandMap({
           {longitudes.map((lng) => { const [x] = project([lng, 0]); return <line key={lng} x1={x} x2={x} y1="0" y2={size.height} />; })}
           {latitudes.map((lat) => { const [, y] = project([0, lat]); return <line key={lat} x1="0" x2={size.width} y1={y} y2={y} />; })}
         </g>
-        {national && (
+        {national && showLabels && (
           <g className="map-geography" aria-hidden="true" pointerEvents="none">
             <text x={project([81.5, 23.1])[0]} y={project([81.5, 23.1])[1]} className="map-country" textAnchor="middle">INDIA</text>
             <text x={project([67.3, 12.9])[0]} y={project([67.3, 12.9])[1]} textAnchor="middle" className="map-sea-label">Arabian Sea</text>
             <text x={project([88.5, 14.3])[0]} y={project([88.5, 14.3])[1]} textAnchor="middle" className="map-sea-label">Bay of Bengal</text>
-            {showLabels && LOCAL_PLACES.map(({ name, point }) => {
+            {LOCAL_PLACES.map(({ name, point }) => {
               const [x, y] = project([point[0], point[1]]);
               return <g key={name}><circle cx={x} cy={y} r="1.8" fill="currentColor" />
                 <text x={x + 6} y={y + 3} className="map-city">{name}</text></g>;
@@ -448,7 +466,7 @@ export default function CommandMap({
             <circle r={national ? "7" : "6"} fill={color} fillOpacity=".94" stroke="#0B1220" strokeWidth="2" />
             {shape === "asset" && <path d="M-2.7 0 H2.7 M0 -2.7 V2.7" stroke="#15132a" strokeWidth="1.6" />}
             {shape === "sos" && <path d="M0 -2.7 V.6 M0 2.5 v.3" stroke="#441019" strokeWidth="1.7" strokeLinecap="round" />}
-            {(national && size.width > 480 && shape !== "sos" || id === "location") && (
+            {(showLabels && national && size.width > 480 && shape !== "sos" || id === "location") && (
               <text x={labelX} y={-13} textAnchor={anchor} className="map-marker-label">{label}</text>
             )}
           </g>;
@@ -473,7 +491,9 @@ export default function CommandMap({
       {!usingGoogle && <div className="map-scale" aria-label={`Map scale ${scaleKm} kilometers`}>
         <span style={{ width: scaleKm / kmPerPixel }} /> <span>{scaleKm} km</span>
       </div>}
-      {!usingGoogle && <div className="map-credit">{mapStyle === "roadmap" ? "Natural Earth" : "NASA Blue Marble · Natural Earth"}</div>}
+      {!usingGoogle && (hasScene ? <div className="map-credit map-credit-imagery">
+        <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">EOxCloudless</a> by <a href="https://eox.at/" target="_blank" rel="noreferrer">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2025) · <a href="https://maps.eox.at/" target="_blank" rel="noreferrer">EOX Maps</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</a>
+      </div> : <div className="map-credit">{mapStyle === "roadmap" ? "Natural Earth" : "NASA Blue Marble · Natural Earth"}</div>)}
     </div>
   );
 }

@@ -228,6 +228,21 @@ class SOSPacket(BaseModel):
         return self
 
 
+class SOSEmailDraft(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+
+class SOSEmailNotice(BaseModel):
+    status: Literal["manual", "queued", "sending", "accepted", "failed", "uncertain", "cancelled"]
+    draft: SOSEmailDraft | None = None
+
+
+class SOSReceipt(SOSPacket):
+    email_notification: SOSEmailNotice | None = None
+
+
 # ==============================================================================
 # Dispatch Vector Models (dispatch_vector.schema.json)
 # ==============================================================================

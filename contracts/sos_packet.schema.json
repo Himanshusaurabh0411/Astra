@@ -14,6 +14,20 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "email_notification": {
+      "type": "object",
+      "readOnly": true,
+      "description": "Email status returned in a submission receipt when an exercise inbox is configured.",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["manual", "queued", "sending", "accepted", "failed", "uncertain", "cancelled"] },
+        "draft": {
+          "type": "object", "additionalProperties": false, "required": ["to", "subject", "body"],
+          "properties": { "to": { "type": "string", "format": "email" }, "subject": { "type": "string" }, "body": { "type": "string" } }
+        }
+      }
+    },
     "sos_id": {
       "type": "string",
       "pattern": "^SOS-[A-Z0-9_-]{4,20}$",

@@ -3,6 +3,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from app.models.state import state_store
 from app.services import government_auth as auth
+from app.services import sos_email
+from app.config import settings
 
 router = APIRouter(prefix="/api/government", tags=["Government Portal"])
 
@@ -35,4 +37,6 @@ async def overview():
         "requests": list(state_store.sos_packets.values()),
         "sources": state_store.portal_provenance,
         "mode": state_store.mode,
+        "email": {"mode": sos_email.routing_mode(), "recipient": settings.SOS_EMAIL_TO,
+                  "notices": sos_email.notices_for(state_store.sos_packets)},
     }

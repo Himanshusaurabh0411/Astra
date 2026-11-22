@@ -1,4 +1,4 @@
-const CACHE = "terrapulse-offline-v5";
+const CACHE = "terrapulse-offline-v6";
 const PAGES = ["/", "/field"];
 const ASSETS = [
   "/manifest.json", "/icon-192.png", "/icon-512.png", "/india-terrain.webp",
@@ -106,6 +106,7 @@ async function syncHelp() {
   if (!health.ok || (await health.json()).mode === "CELL_BLACKOUT_MESH_ACTIVE") throw new Error("Gateway unavailable");
   const db = await openQueue();
   let sent = 0;
+  const emails = [];
   try {
     const packets = await queuedPackets(db);
     for (let offset = 0; offset < packets.length; offset += 50) {
@@ -123,12 +124,17 @@ async function syncHelp() {
         for (const packet of acknowledgements) store.delete(packet.sos_id);
       });
       sent += acknowledgements.length;
+      for (const { sos_id, email_notification } of acknowledgements) {
+        if (email_notification) emails.push({ sos_id, email_notification });
+      }
     }
   } finally {
     db.close();
     if (sent) {
       const clients = await self.clients.matchAll({ type: "window" });
-      for (const client of clients) client.postMessage({ type: "SOS_SYNCED", count: sent });
+      for (const client of clients) {
+        if (new URL(client.url).pathname === "/field") client.postMessage({ type: "SOS_SYNCED", count: sent, emails });
+      }
     }
   }
 }

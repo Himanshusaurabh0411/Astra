@@ -1,0 +1,57 @@
+{
+  "product_id": "VEDAS_AGRI_CROP_PHENOLOGY_MONITOR",
+  "dataset": "VEDAS / MNDFC / National Drought Monitoring System",
+  "district": "Sehore & Bhopal (Madhya Pradesh)",
+  "satellite_sensors": ["Sentinel-2 MSI", "Resourcesat-2A AWiFS"],
+  "generated_at_utc": "2026-11-22T02:00:00Z",
+  "blocks": [
+    {
+      "block_id": "VEDAS-AGRI-KOTHRI",
+      "block_name": "Kothri Kalan / Sehore Rural",
+      "major_crop": "Soybean (JS-9560)",
+      "crop_season": "Kharif",
+      "phenology_stage": "Pod Filling & Seed Development",
+      "mean_ndvi": 0.68,
+      "baseline_ndvi": 0.83,
+      "ndvi_anomaly_pct": -18.1,
+      "soil_moisture_pct": 89.4,
+      "inundated_hectares": 1420.0,
+      "crop_stress_status": "HIGH_WATERLOGGING_STRESS",
+      "pmfby_eligible": true,
+      "pmfby_clause": "Clause 2.4 - Localized Post-Inundation Calamity",
+      "recommended_action": "Automated parametric compensation registration advised for 1,420 Ha."
+    },
+    {
+      "block_id": "VEDAS-AGRI-ICHHAWAR",
+      "block_name": "Ichhawar Basin",
+      "major_crop": "Kharif Paddy (Kranti)",
+      "crop_season": "Kharif",
+      "phenology_stage": "Vegetative Tillering",
+      "mean_ndvi": 0.75,
+      "baseline_ndvi": 0.79,
+      "ndvi_anomaly_pct": -5.1,
+      "soil_moisture_pct": 94.2,
+      "inundated_hectares": 780.0,
+      "crop_stress_status": "MODERATE_INUNDATION",
+      "pmfby_eligible": false,
+      "pmfby_clause": "Tolerance threshold intact for lowland paddy",
+      "recommended_action": "Open secondary drainage gates along Sevan checkdam."
+    },
+    {
+      "block_id": "VEDAS-AGRI-PHANDA",
+      "block_name": "Phanda / Bhopal West",
+      "major_crop": "Maize & Fodder",
+      "crop_season": "Kharif",
+      "phenology_stage": "Silking & Cob Filling",
+      "mean_ndvi": 0.72,
+      "baseline_ndvi": 0.80,
+      "ndvi_anomaly_pct": -10.0,
+      "soil_moisture_pct": 78.5,
+      "inundated_hectares": 390.0,
+      "crop_stress_status": "LOCALIZED_WATER_LOGGING",
+      "pmfby_eligible": true,
+      "pmfby_clause": "Clause 2.4 - Localized Calamity Assessment",
+      "recommended_action": "Parametric insurance claim triggered for 390 Ha low-lying acreage."
+    }
+  ]
+}

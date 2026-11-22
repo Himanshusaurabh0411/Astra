@@ -1,15 +1,21 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, CheckCircle2, CloudSun, Landmark, LockKeyhole, LogOut, Radio, RefreshCw, ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, CloudSun, Landmark, LockKeyhole, LogOut, Mail, Radio, RefreshCw, ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import SosEmailStatus from "@/components/SosEmailStatus";
 import WorkspaceFrame from "@/components/WorkspaceFrame";
 import { friendlyNeed } from "@/lib/briefing";
-import { type PortalProvenance, type SOSPacket } from "@/lib/terrapulseClient";
+import { type PortalProvenance, type SOSEmailNotice, type SOSPacket } from "@/lib/terrapulseClient";
 import { updateTime, WorkspaceError, workspaceErrorMessage, workspaceRequest } from "@/lib/workspaceApi";
 
 interface Officer { email: string; agency: string }
 interface Session { configured: boolean; officer: Officer | null }
-interface Overview { requests: SOSPacket[]; sources: Record<string, PortalProvenance>; mode: string }
+interface Overview {
+  requests: SOSPacket[];
+  sources: Record<string, PortalProvenance>;
+  mode: string;
+  email?: { mode: "off" | "manual" | "automatic"; recipient: string | null; notices: Record<string, SOSEmailNotice> };
+}
 
 const severityOrder = { CRITICAL: 0, HIGH: 1, MODERATE: 2, LOW: 3 };
 const sourceLabels = { live_portal: "Live portal", local_sample: "Local sample", seed_fallback: "Exercise data" };
@@ -147,6 +153,10 @@ export default function GovernmentPortal() {
       </header>
       {error && <p className="tp-workspace-inline-error" role="alert">{error}</p>}
       {notice && <p className="tp-workspace-confirmed" role="status"><CheckCircle2 size={17} /> {notice}</p>}
+      {overview?.email?.recipient && <section className="tp-card tp-exercise-inbox" aria-label="Exercise email routing">
+        <Mail size={21} aria-hidden="true" /><div><h2>Exercise inbox</h2><p>{overview.email.recipient}</p></div>
+        <span>{overview.email.mode === "automatic" ? "Automatic forwarding" : "Manual Gmail drafts"}</span>
+      </section>}
       {overview && <dl className="tp-government-metrics">
         <div className="tp-card"><dt><Radio size={17} /> Open requests</dt><dd>{requests.length}</dd></div>
         <div className="tp-card"><dt><TriangleAlert size={17} /> Critical requests</dt><dd>{requests.filter(({ triage }) => triage.severity === "CRITICAL").length}</dd></div>
@@ -167,6 +177,7 @@ export default function GovernmentPortal() {
             <p>{triage.needs.map(friendlyNeed).join(" · ") || "Help requested"}</p>
             {triage.note && <blockquote>{triage.note}</blockquote>}
             <small>{sos_id} · {position.lat.toFixed(4)}° N, {position.lng.toFixed(4)}° E · {updateTime(timestamp)} IST</small>
+            {overview?.email?.notices[sos_id] && <SosEmailStatus notice={overview.email.notices[sos_id]} />}
             {confirm === sos_id ? <div className="tp-government-confirm">
               <p>Close this exercise request?</p>
               <button className="tp-button tp-workspace-primary" type="button" disabled={busy} onClick={() => void resolve(sos_id)}>Confirm resolution</button>

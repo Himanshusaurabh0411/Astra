@@ -5,6 +5,7 @@ from app.config import parse_bbox, settings
 from app.models.regions import Region, canonical_region, get_regions
 from app.models.schemas import TerraPulseStateResponse
 from app.models.state import state_store
+from app.services.sos_email import cancel_pending
 
 router = APIRouter(tags=["State & Telemetry"])
 
@@ -63,6 +64,7 @@ async def get_state(
 
 @router.post("/api/state/reset", response_model=TerraPulseStateResponse, response_model_exclude_none=True)
 async def reset_state() -> TerraPulseStateResponse:
+    cancel_pending()
     state_store.reset_to_baseline()
     result = state_store.get_state_response()
     await ws_manager.broadcast("state_updated", {"reason": "reset", "mode": result.mode})

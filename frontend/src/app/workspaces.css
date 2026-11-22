@@ -140,6 +140,17 @@
 .tp-government-metrics svg { color: var(--workspace-accent); flex: none; }
 .tp-government-metrics dd { font-weight: 800; font-size: 35px; letter-spacing: -.04em; margin-top: 2px; }
 .tp-government-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; }
+.tp-exercise-inbox, .tp-email-status { display: flex; align-items: flex-start; gap: 9px; padding: 12px 14px; }
+.tp-exercise-inbox { align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.tp-exercise-inbox h2 { font-size: 15px; }
+.tp-exercise-inbox > div { flex: 1; min-width: 0; }
+.tp-exercise-inbox p { color: var(--tp-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.tp-exercise-inbox > span { color: var(--tp-muted); font-size: 12px; }
+.tp-exercise-inbox svg, .tp-email-status svg { flex: none; color: var(--tp-blue); }
+.tp-email-status { margin-top: 7px; border: 1px solid var(--tp-line); border-radius: 8px; background: #101d2d; }
+.tp-email-status p, .tp-email-status small { color: var(--tp-secondary); font-size: 13px; line-height: 1.45; }
+.tp-email-status small { color: var(--tp-muted); font-size: 11px; }
+.tp-email-status .tp-button { margin-top: 8px; }
 .tp-government-requests { display: grid; gap: 9px; padding: 12px; }
 .tp-government-requests:empty { display: none; }
 .tp-government-requests li { display: grid; gap: 7px; justify-items: start; padding: 12px; border: 1px solid var(--tp-line); border-radius: 9px; background: #0c1626; overflow-wrap: anywhere; }

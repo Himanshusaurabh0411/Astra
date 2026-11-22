@@ -7,13 +7,14 @@ import {
 } from "lucide-react";
 import Brand from "@/components/Brand";
 import CommandMap, { type MapTarget } from "@/components/CommandMap";
+import SosEmailStatus from "@/components/SosEmailStatus";
 import { formatNumber, friendlyNeed, timeOf } from "@/lib/briefing";
 import { DEFAULT_LAYERS, LABELS } from "@/lib/layers";
 import { getNavicFix, getQueuedOfflineSOS, saveNavicFix, type NavicFixData } from "@/lib/offlineStore";
 import { distanceKm, getRegion, INDIA, INDIA_REGIONS, inBounds, nearestRegion, type Place, type Point } from "@/lib/regions";
 import {
   compileLocalState, featurePoint, fetchState, routePair, submitSOSPacket, subscribeToTelemetry,
-  syncQueuedSOS, type HazardSeverity, type SOSPacket,
+  syncQueuedSOS, type HazardSeverity, type SOSEmailNotice, type SOSPacket, type SOSReceipt,
 } from "@/lib/terrapulseClient";
 
 const NEEDS = [
@@ -40,7 +41,12 @@ function shortId(): string {
   return [...crypto.getRandomValues(new Uint8Array(8))].map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
-type Delivery = { kind: "queued" | "received"; message: string; time: string } | { kind: "error"; message: string };
+type EmailReceipt = { sos_id: string; email_notification: SOSEmailNotice };
+type Delivery = { kind: "queued" | "received"; message: string; time: string; emails?: EmailReceipt[] } | { kind: "error"; message: string };
+
+function receivedEmails(packets: SOSReceipt[]): EmailReceipt[] {
+  return packets.flatMap(({ sos_id, email_notification }) => email_notification ? [{ sos_id, email_notification }] : []);
+}
 
 export default function FieldResponder() {
   const [state, setState] = useState(compileLocalState);
@@ -79,7 +85,7 @@ export default function FieldResponder() {
         setQueued(await getQueuedOfflineSOS());
         if (delivered.length) {
           setDelivery({ kind: "received", message: `${delivered.length} queued ${delivered.length === 1 ? "request synced" : "requests synced"} to TerraPulse.`,
-            time: new Date().toISOString() });
+            time: new Date().toISOString(), emails: receivedEmails(delivered) });
         }
       }
     } catch {
@@ -115,7 +121,7 @@ export default function FieldResponder() {
       if (event.data?.type === "SOS_SYNCED" && event.data.count > 0) {
         const count = Number(event.data.count);
         setDelivery({ kind: "received", message: `${count} queued ${count === 1 ? "request synced" : "requests synced"} to TerraPulse.`,
-          time: new Date().toISOString() });
+          time: new Date().toISOString(), emails: event.data.emails });
         void getQueuedOfflineSOS().then(setQueued);
       }
     };
@@ -202,7 +208,7 @@ export default function FieldResponder() {
       const message = waiting
         ? "Help request saved on this device. It will sync when TerraPulse reconnects."
         : "TerraPulse received your exercise help request.";
-      setDelivery({ kind: waiting ? "queued" : "received", message, time: saved.timestamp });
+      setDelivery({ kind: waiting ? "queued" : "received", message, time: saved.timestamp, emails: waiting ? [] : receivedEmails([saved]) });
       setQueued(await getQueuedOfflineSOS());
       setNote("");
       setNeeds([]);
@@ -311,12 +317,15 @@ export default function FieldResponder() {
               <button type="submit" className="tp-button tp-sos-button tp-field-send" disabled={sending || !fix}>
                 <Radio size={19} /> {sending ? "Saving request…" : "Send SOS Help Request"}
               </button>
+              <p className="tp-field-hint">This rescue exercise uses the project team's inbox. Email summaries include your case number, area, urgency, help types and headcount.</p>
             </form>
 
             {delivery && <div className={`tp-field-delivery tp-field-delivery-${delivery.kind}`} role={delivery.kind === "error" ? "alert" : "status"}>
               {delivery.kind === "error" ? <TriangleAlert size={17} /> : <Check size={17} />}
               <p>{delivery.message}</p>
             </div>}
+            {delivery?.kind === "received" && delivery.emails?.map(({ sos_id, email_notification }) =>
+              <SosEmailStatus key={sos_id} notice={email_notification} requestId={sos_id} />)}
             {(delivery?.kind === "queued" || delivery?.kind === "received" || queued.length > 0) && (
               <div className="tp-relay">
                 <h3>Radio relay exercise</h3>

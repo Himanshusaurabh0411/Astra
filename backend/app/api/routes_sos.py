@@ -10,11 +10,12 @@ from app.config import settings
 from app.models.regions import contains, get_regions
 from app.models.schemas import (
     DispatchVector, HazardSeverity, MeshModel, MeshSyncStatus, NavicBand,
-    PositionModel, SOSPacket, TriageModel,
+    PositionModel, SOSPacket, SOSReceipt, TriageModel,
 )
 from app.models.state import state_store
 from app.services.government_auth import require_officer
 from app.services.mesh_relay_service import MAX_ACTIVE_SOS, mesh_relay_service
+from app.services.sos_email import cancel_pending, record_receipts
 
 router = APIRouter(prefix="/api", tags=["Rescue & Safe Routes"])
 StringNeed = Annotated[str, Field(min_length=1, max_length=32)]
@@ -62,7 +63,7 @@ async def list_sos_beacons() -> list[SOSPacket]:
     return [packet.public_view() for packet in state_store.sos_packets.values()]
 
 
-@router.post("/sos", response_model=SOSPacket | list[SOSPacket], response_model_exclude_none=True)
+@router.post("/sos", response_model=SOSReceipt | list[SOSReceipt], response_model_exclude_none=True)
 async def ingest_sos_beacon(payload: SOSPacket | Batch | SimpleSOSRequest):
     batch = isinstance(payload, list)
     if isinstance(payload, SimpleSOSRequest):
@@ -82,9 +83,12 @@ async def ingest_sos_beacon(payload: SOSPacket | Batch | SimpleSOSRequest):
     if len(state_store.sos_packets) + len(new_ids) > MAX_ACTIVE_SOS:
         raise HTTPException(503, "The exercise rescue queue is full. Try syncing again later.")
     saved = [mesh_relay_service.register_or_enrich_sos(packet) for packet in packets]
+    notices = record_receipts(saved, new_ids)
+    receipts = [SOSReceipt(**packet.public_view().model_dump(), email_notification=notices.get(packet.sos_id))
+                for packet in saved]
     for sos_id in dict.fromkeys(packet.sos_id for packet in saved if packet.sos_id in new_ids):
         await ws_manager.broadcast("sos_received", {"sos_id": sos_id})
-    return [packet.public_view() for packet in saved] if batch else saved[0].public_view()
+    return receipts if batch else receipts[0]
 
 
 @router.post("/sos/{sos_id}/relay", response_model=SOSPacket, response_model_exclude_none=True)
@@ -103,6 +107,7 @@ async def relay_sos(sos_id: str) -> SOSPacket:
 
 @router.post("/sos/{sos_id}/resolve", dependencies=[Depends(require_officer)])
 async def resolve_sos(sos_id: str) -> dict:
+    cancel_pending(sos_id)
     packet = state_store.sos_packets.pop(sos_id, None)
     if packet is None and sos_id not in state_store.resolved_sos:
         raise HTTPException(404, "This help request could not be found.")
