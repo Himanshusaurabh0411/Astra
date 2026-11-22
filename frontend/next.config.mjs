@@ -7,6 +7,7 @@ if (existsSync(environment)) process.loadEnvFile?.(environment);
 
 const upstream = (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const google = "https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com https://*.ggpht.com";
+const tiles = "https://*.arcgisonline.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://bhuvan-app1.nrsc.gov.in https://*.nrsc.gov.in";
 const devEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
 const publicApi = [process.env.NEXT_PUBLIC_BACKEND_URL, process.env.NEXT_PUBLIC_WS_URL]
   .filter(Boolean).map((value) => new URL(value).origin).join(" ");
@@ -14,9 +15,9 @@ const policy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${devEval} ${google} blob:`,
   `style-src 'self' 'unsafe-inline' ${google}`,
-  `img-src 'self' data: blob: https://tiles.maps.eox.at ${google}`,
+  `img-src 'self' data: blob: https://tiles.maps.eox.at ${google} ${tiles}`,
   "font-src 'self' https://fonts.gstatic.com data:",
-  `connect-src 'self' ws: wss: ${google} ${publicApi}`,
+  `connect-src 'self' ws: wss: ${google} ${tiles} ${publicApi}`,
   "worker-src 'self' blob:",
   "frame-src https://*.google.com",
   "frame-ancestors 'none'",
