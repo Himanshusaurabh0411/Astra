@@ -50,6 +50,8 @@ export function SeverityBadge({ severity }: { severity: Brief["severity"] }) {
   </span>;
 }
 
+const ALERT_TABS = ["Details", "Impact", "Resources"] as const;
+
 export function AlertCard({ brief, resources, onResource, onDispatch, onRain, disabled }: {
   brief: Brief;
   resources: GeoJsonFeature[];
@@ -58,10 +60,10 @@ export function AlertCard({ brief, resources, onResource, onDispatch, onRain, di
   onRain: () => void;
   disabled: boolean;
 }) {
-  const [tab, setTab] = useState<"Details" | "Impact" | "Resources">("Details");
+  const [tab, setTab] = useState<(typeof ALERT_TABS)[number]>("Details");
   const [checked, setChecked] = useState<string[]>([]);
   return (
-    <section className="tp-card tp-alert-card" aria-label="Alert and action">
+    <section className="tp-card tp-alert-card" data-severity={brief.severity.toLowerCase()} aria-label="Alert and action">
       <div className="tp-card-heading"><span><Bell size={17} /> Alert &amp; Action</span><SeverityBadge severity={brief.severity} /></div>
       <div className="tp-alert-title">
         <p><MapPin size={14} /> {brief.place}</p>
@@ -69,9 +71,22 @@ export function AlertCard({ brief, resources, onResource, onDispatch, onRain, di
         <small>{brief.time ? `Reported ${timeOf(brief.time)} IST` : "Map selection"}</small>
       </div>
       <div className="tp-tabs" role="tablist" aria-label="Alert information">
-        {(["Details", "Impact", "Resources"] as const).map((label) => (
+        {ALERT_TABS.map((label, index) => (
           <button key={label} id={`brief-${label}`} type="button" role="tab" aria-selected={tab === label}
-            aria-controls="brief-panel" onClick={() => setTab(label)}>{label}</button>
+            tabIndex={tab === label ? 0 : -1} aria-controls="brief-panel" onClick={() => setTab(label)}
+            onKeyDown={(event) => {
+              const keys: Record<string, number> = {
+                ArrowLeft: (index + ALERT_TABS.length - 1) % ALERT_TABS.length,
+                ArrowRight: (index + 1) % ALERT_TABS.length,
+                Home: 0,
+                End: ALERT_TABS.length - 1,
+              };
+              const next = keys[event.key];
+              if (typeof next !== "number") return;
+              event.preventDefault();
+              setTab(ALERT_TABS[next]);
+              event.currentTarget.parentElement?.querySelectorAll("button")[next]?.focus();
+            }}>{label}</button>
         ))}
       </div>
       <div className="tp-alert-body" role="tabpanel" id="brief-panel" aria-labelledby={`brief-${tab}`} aria-live="polite">
@@ -84,7 +99,7 @@ export function AlertCard({ brief, resources, onResource, onDispatch, onRain, di
               const isChecked = checked.includes(action);
               return <li key={action}><button type="button" role="checkbox" aria-checked={isChecked}
                 onClick={() => setChecked((items) => isChecked ? items.filter((item) => item !== action) : [...items, action])}>
-                <span className="tp-check"><Check size={12} /></span>{action}
+                <span className="tp-check" aria-hidden="true">{isChecked && <Check size={12} />}</span>{action}
               </button></li>;
             })}
           </ul>

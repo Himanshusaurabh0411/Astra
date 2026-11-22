@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import OfflineShell from "@/components/OfflineShell";
 import "./globals.css";
 import "./operations.css";
+import "./workspaces.css";
 
 export const metadata: Metadata = {
   title: "TerraPulse | India Disaster Monitor",

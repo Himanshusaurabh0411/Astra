@@ -20,7 +20,7 @@ class MeshRelayService:
     """Simulate radio hops and store acknowledged packets for the current exercise."""
 
     def register_or_enrich_sos(self, packet: SOSPacket) -> SOSPacket:
-        existing = state_store.sos_packets.get(packet.sos_id)
+        existing = state_store.sos_packets.get(packet.sos_id) or state_store.resolved_sos.get(packet.sos_id)
         if existing:
             return existing
 

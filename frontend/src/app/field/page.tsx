@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  Check, ChevronDown, CloudOff, Crosshair, Droplets, HeartPulse, Home, MapPin,
+  Check, ChevronDown, CloudOff, Crosshair, Droplets, HeartPulse, Home, MapPin, Minus, Plus,
   Radio, Route, Satellite, ShieldCheck, Soup, TriangleAlert, Users, Wifi,
 } from "lucide-react";
 import Brand from "@/components/Brand";
@@ -217,6 +217,9 @@ export default function FieldResponder() {
   }
 
   const routeName = dispatch?.safe_asset.name ?? localRoute?.asset.properties.title;
+  const adjustHeadcount = (delta: number) => {
+    setPeople((current) => String(Math.min(10000, Math.max(1, Math.trunc(Number(current) || 1) + delta))));
+  };
 
   return <div className="tp-field">
     <a className="tp-skip" href="#field-content">Skip to responder controls</a>
@@ -228,10 +231,16 @@ export default function FieldResponder() {
       </div>
     </header>
     <main className="tp-field-content" id="field-content">
-      <div className="tp-page-heading">
-        <div className="tp-context"><Radio size={15} /> Rescue exercise<span />{ready ? "Available offline" : "Offline setup pending"}</div>
-        <h1>Field Responder</h1>
-        <p>Find your location, ask for help and check nearby places to take shelter.</p>
+      <div className="tp-field-intro">
+        <div className="tp-page-heading">
+          <div className="tp-context"><Radio size={15} /> Rescue exercise<span />{ready ? "Available offline" : "Offline setup pending"}</div>
+          <h1>Field Responder</h1>
+          <p>Find your location, ask for help and check nearby places to take shelter.</p>
+        </div>
+        <nav className="tp-field-quick" aria-label="Responder shortcuts">
+          <a className="tp-button tp-sos-button" href="#sos-heading"><Radio size={18} /> Send SOS</a>
+          <a className="tp-button" href="#routes-heading"><Route size={18} /> Find shelter</a>
+        </nav>
       </div>
       <div className="tp-field-banner" role="status">
         {linked ? <Wifi size={18} /> : <CloudOff size={18} />}
@@ -279,9 +288,15 @@ export default function FieldResponder() {
                   </label>
                 ))}
               </div></fieldset>
-              <label className="tp-people-input"><span><Users size={17} /> Number of people</span>
-                <input type="number" min={1} max={10000} required inputMode="numeric" value={people} onChange={(event) => setPeople(event.target.value)} />
-              </label>
+              <div className="tp-people-input">
+                <label htmlFor="field-headcount"><Users size={17} /> Number of people</label>
+                <div className="tp-count-control">
+                  <button type="button" aria-label="Fewer people" disabled={Number(people) <= 1} onClick={() => adjustHeadcount(-1)}><Minus size={18} /></button>
+                  <input id="field-headcount" type="number" min={1} max={10000} required inputMode="numeric" value={people}
+                    onChange={(event) => setPeople(event.target.value)} />
+                  <button type="button" aria-label="More people" disabled={Number(people) >= 10000} onClick={() => adjustHeadcount(1)}><Plus size={18} /></button>
+                </div>
+              </div>
               <fieldset><legend>Help needed</legend><div className="tp-needs">
                 {NEEDS.map(({ value, label, icon: Icon }) => <label key={value}>
                   <input type="checkbox" checked={needs.includes(value)} onChange={() =>
@@ -293,7 +308,7 @@ export default function FieldResponder() {
                 <textarea maxLength={240} value={note} onChange={(event) => setNote(event.target.value)}
                   placeholder="For example, two people need help near the school. Use exercise details." rows={3} />
               </label>
-              <button type="submit" className="tp-button tp-field-send" disabled={sending || !fix}>
+              <button type="submit" className="tp-button tp-sos-button tp-field-send" disabled={sending || !fix}>
                 <Radio size={19} /> {sending ? "Saving request…" : "Send SOS Help Request"}
               </button>
             </form>

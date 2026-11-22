@@ -218,6 +218,9 @@ class SOSPacket(BaseModel):
     triage: TriageModel
     mesh: MeshModel
 
+    def public_view(self) -> "SOSPacket":
+        return self.model_copy(update={"triage": self.triage.model_copy(update={"note": None})})
+
     @model_validator(mode="after")
     def validate_hops(self) -> "SOSPacket":
         if self.mesh.hop_count > self.mesh.max_hops:

@@ -5,9 +5,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes_government import router as government_router
 from app.api.routes_scenario import router as scenario_router
 from app.api.routes_sos import router as sos_router
 from app.api.routes_state import health_check, router as state_router
+from app.api.routes_weather import router as weather_router
 from app.api.ws_live import router as ws_router
 from app.config import settings
 
@@ -57,6 +59,8 @@ async def validation_error(_request: Request, exc: RequestValidationError):
 app.include_router(state_router)
 app.include_router(scenario_router)
 app.include_router(sos_router)
+app.include_router(government_router)
+app.include_router(weather_router)
 app.include_router(ws_router)
 
 

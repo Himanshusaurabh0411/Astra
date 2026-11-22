@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bell, ChevronDown, CloudRain, FileText, Globe2, Home, Layers3, MapPin, Menu,
-  Radio, RotateCcw, Send, Settings2, ShieldCheck, WifiOff, X,
+  BarChart3, Bell, ChevronDown, CloudRain, CloudSun, FileText, Globe2, Home, Landmark, Layers3, MapPin, Menu,
+  Radio, RotateCcw, Send, Settings2, ShieldCheck, Sprout, WifiOff, X,
 } from "lucide-react";
 import Brand from "@/components/Brand";
 import CommandMap, { type MapSelection, type MapTarget } from "@/components/CommandMap";
@@ -81,7 +81,9 @@ export default function Dashboard() {
   const blackout = snapshot.mode === "CELL_BLACKOUT_MESH_ACTIVE";
   const mapOffline = browserOffline || blackout;
   const apiConnected = snapshot.connection === "api" && !browserOffline;
-  const sample = !Object.values(state.features.metadata.portal_provenance ?? {}).some((item) => item.source_type === "live_portal");
+  const provenance = Object.values(state.features.metadata.portal_provenance ?? {});
+  const sample = !provenance.some((item) => item.source_type === "live_portal");
+  const dataLabel = sample ? "Exercise data" : provenance.every((item) => item.source_type === "live_portal") ? "Live portal data" : "Mixed portal data";
   const brief = briefing(selection, region, state);
   const resources = useMemo(() => snapshot.features.features.filter((feature) => {
     return ["SHELTER", "HOSPITAL", "SCHOOL", "GRAM_PANCHAYAT"].includes(feature.properties.asset_type ?? "")
@@ -258,7 +260,7 @@ export default function Dashboard() {
     <div className="tp-app">
       <a className="tp-skip" href="#main-content">Skip to main content</a>
       {mobileNav && <button className="tp-mobile-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
-      <aside className={`tp-sidebar ${mobileNav ? "tp-sidebar-open" : ""}`}>
+      <aside id="main-navigation" className={`tp-sidebar ${mobileNav ? "tp-sidebar-open" : ""}`}>
         <button className="tp-brand-button" type="button" onClick={() => showNav("dashboard")} aria-label="TerraPulse dashboard"><Brand /></button>
         <nav aria-label="Main navigation">
           {NAV.map(({ id, label, icon: Icon }) => <button type="button" key={id} onClick={() => showNav(id)}
@@ -266,6 +268,9 @@ export default function Dashboard() {
             {id === "alerts" && alertCount > 0 && <small className="tp-nav-count">{alertCount}</small>}
           </button>)}
           <a href={`/field?region=${region.id}`}><Radio size={18} /><span>Field Responder</span></a>
+          <a href="/weather"><CloudSun size={18} /><span>India Weather</span></a>
+          <a href={`/farm?region=${region.id}`}><Sprout size={18} /><span>Farm Planner</span></a>
+          <a href="/government"><Landmark size={18} /><span>Government Portal</span></a>
           <button type="button" onClick={() => showNav("settings")} aria-current={nav === "settings" ? "page" : undefined}>
             <Settings2 size={18} /><span>Settings</span>
           </button>
@@ -278,8 +283,9 @@ export default function Dashboard() {
 
       <main className="tp-main" id="main-content">
         <header className="tp-topbar">
-          <button type="button" className="tp-icon-button tp-mobile-toggle" aria-label="Open navigation" aria-expanded={mobileNav}
+          <button type="button" className="tp-icon-button tp-mobile-toggle" aria-label="Open navigation" aria-expanded={mobileNav} aria-controls="main-navigation"
             onClick={() => setMobileNav(!mobileNav)}><Menu size={20} /></button>
+          <span className="tp-mobile-brand" aria-hidden="true">TerraPulse</span>
           <PlaceSearch regions={regions} features={snapshot.features.features} offline={mapOffline} onChoose={chooseSearch} />
           <div className="tp-top-spacer" />
           <div className="tp-region-select"><Globe2 size={16} aria-hidden />
@@ -293,25 +299,25 @@ export default function Dashboard() {
         </header>
 
         <div className="tp-main-content">
-          <div className="tp-page-heading">
-            <div>
-              <div className="tp-context"><MapPin size={14} /> {region.id === INDIA.id ? "All India" : region.basin}<span />{sample ? "Exercise data" : "Portal data"}</div>
+          <div className={nav === "dashboard" ? "tp-command-intro" : undefined}>
+            <div className="tp-page-heading">
+              <div className="tp-context"><MapPin size={14} /> {region.id === INDIA.id ? "All India" : region.basin}<span />{dataLabel}</div>
               <h1>{HEADINGS[nav][0]}</h1>
               <p>{HEADINGS[nav][1]}</p>
             </div>
+            {(nav === "dashboard" || nav === "settings") && (
+              <div className="tp-scenario-bar" role="group" aria-label="Exercise controls">
+                <span className="tp-scenario-label">Demo controls</span>
+                <button type="button" className="tp-button tp-scenario-rain" onClick={() => void rain()} disabled={!!working}><CloudRain size={16} />
+                  Simulate Heavy Rain <span>&gt;{snapshot.features.metadata.rainfall_threshold_mm_hr ?? 15} mm/hr</span></button>
+                <button type="button" className="tp-button" onClick={() => void changeMode()} disabled={!!working}><WifiOff size={15} />
+                  {blackout ? "Restore Connection" : "Simulate Network Blackout"}</button>
+                <button type="button" className="tp-button" onClick={() => void sendRoute()} disabled={!!working}><Send size={15} /> Send Safe Route</button>
+                <button type="button" className="tp-button tp-reset" onClick={() => void reset()} disabled={!!working}><RotateCcw size={15} /> Reset</button>
+                {working && <span className="tp-working" role="status">{working}</span>}
+              </div>
+            )}
           </div>
-
-          {(nav === "dashboard" || nav === "settings") && (
-            <div className="tp-scenario-bar" aria-label="Exercise controls">
-              <button type="button" className="tp-button tp-scenario-rain" onClick={() => void rain()} disabled={!!working}><CloudRain size={16} />
-                Simulate Heavy Rain <span>&gt;{snapshot.features.metadata.rainfall_threshold_mm_hr ?? 15} mm/hr</span></button>
-              <button type="button" className="tp-button" onClick={() => void changeMode()} disabled={!!working}><WifiOff size={15} />
-                {blackout ? "Restore Connection" : "Simulate Network Blackout"}</button>
-              <button type="button" className="tp-button" onClick={() => void sendRoute()} disabled={!!working}><Send size={15} /> Send Safe Route</button>
-              <button type="button" className="tp-button tp-reset" onClick={() => void reset()} disabled={!!working}><RotateCcw size={15} /> Reset</button>
-              {working && <span className="tp-working" role="status">{working}</span>}
-            </div>
-          )}
           {!apiConnected && !loading && !blackout && (
             <div className="tp-cache-notice" role="status"><WifiOff size={16} /> Showing {snapshot.connection === "cache" ? "the last saved map" : "the built-in exercise map"}.</div>
           )}
@@ -324,11 +330,11 @@ export default function Dashboard() {
                   <small>{region.name}</small>
                 </div>
                 <CommandMap target={target} features={state.features.features} sosPackets={state.sos_packets}
-                  dispatches={state.dispatches} activeLayers={layers} offline={mapOffline}
+                  dispatches={state.dispatches} activeLayers={layers} offline={mapOffline} allowTilt
                   onRegion={chooseRegion} onSelect={selectMap} onLayers={() => showNav("layers")}
                   onPoint={(center) => setSelection({ kind: "place", name: "Selected map location", center, regionId: nearestRegion(center).id })} />
                 <div className="tp-map-legend" aria-label="Map legend">
-                  {LAYERS.map(({ id, color, name }) => <span key={id} title={name}><i style={{ background: id === "sos_mesh" ? "#ff6868" : color }} />{
+                  {LAYERS.map(({ id, color, name }) => <span key={id} title={name}><i data-layer={id} style={{ color: id === "sos_mesh" ? "#ff6868" : color }} />{
                     ({ mosdac_rain: "Heavy rain", bhoonidhi_flood: "Flood water", vedas_roads: "Closed road",
                       vedas_corridors: "Safe route", bhuvan_assets: "Relief point", sos_mesh: "SOS request" })[id]
                   }</span>)}

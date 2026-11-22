@@ -59,6 +59,7 @@ class TerraPulseStateStore:
         self.features_collection: Optional[GeoJsonFeatureCollection] = None
         self.layer_provenance: Dict[str, LayerProvenance] = {}
         self.sos_packets: Dict[str, SOSPacket] = {}
+        self.resolved_sos: Dict[str, SOSPacket] = {}
         self.dispatches: Dict[str, DispatchVector] = {}
         self.regional_features: list[GeoJsonFeature] = []
         self.baseline_features: list[GeoJsonFeature] = []
@@ -80,6 +81,7 @@ class TerraPulseStateStore:
         self.lora_mesh_active = self.mode != OperationalMode.NORMAL
         self.regional_features.clear()
         self.sos_packets.clear()
+        self.resolved_sos.clear()
         self.dispatches.clear()
 
         # 1. Load GeoJSON Seed Data
@@ -611,7 +613,7 @@ class TerraPulseStateStore:
             mode=self.mode,
             features=result,
             payload_kb=result.metadata.payload_kb,
-            sos_packets=sos,
+            sos_packets=[packet.public_view() for packet in sos],
             dispatches=dispatches,
             kpis=self.get_kpis(selected, sos, result.metadata.payload_kb, len(result.features)),
             last_updated=self.last_updated,

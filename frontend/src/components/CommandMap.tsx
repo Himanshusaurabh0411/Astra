@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Crosshair, Layers3, Minus, Plus, Radar } from "lucide-react";
+import { Box, Crosshair, Layers3, Minus, Plus, Radar } from "lucide-react";
 import basemap from "@/lib/india-basemap.json";
 import { loadGoogleMaps, onGoogleAuthFailure, HAS_GOOGLE_MAPS, type GoogleMap, type MapStyle } from "@/lib/googleMaps";
 import { INDIA, INDIA_REGIONS, inBounds, type Bounds, type Point, type Region } from "@/lib/regions";
@@ -25,6 +25,7 @@ interface Props {
   sosPackets?: SOSPacket[];
   dispatches?: DispatchVector[];
   offline?: boolean;
+  allowTilt?: boolean;
   onSelect?: (item: MapSelection) => void;
   onRegion?: (region: Region) => void;
   onPoint?: (point: Point) => void;
@@ -47,6 +48,8 @@ const MODES = [
 const SOS_COLOR = "#FF6868";
 const ROUTE_COLOR = "#F5D547";
 const PULSE_COLOR = "#FF8A3D";
+const TERRAIN_VIEW = { depth: 1100, angle: 27, zoom: 1.08, origin: .54 };
+const TERRAIN_RADIANS = TERRAIN_VIEW.angle * Math.PI / 180;
 const REGION_LABEL_ANCHORS: Partial<Record<string, "start" | "end">> = {
   "central-india": "end",
   "indo-gangetic": "end",
@@ -93,13 +96,14 @@ function activate(event: KeyboardEvent, select: () => void) {
 
 export default function CommandMap({
   target, features, activeLayers, sosPackets = [], dispatches = [], offline = false,
-  onSelect, onRegion, onPoint, onLayers, location,
+  onSelect, onRegion, onPoint, onLayers, location, allowTilt = false,
 }: Props) {
   const shell = useRef<HTMLDivElement>(null);
   const googleHost = useRef<HTMLDivElement>(null);
   const googleMap = useRef<GoogleMap>();
   const [size, setSize] = useState<Dimensions>({ width: 840, height: 450 });
-  const [mapStyle, setMapStyle] = useState<MapStyle>("satellite");
+  const [mapStyle, setMapStyle] = useState<MapStyle>(allowTilt ? "hybrid" : "roadmap");
+  const [tilt, setTilt] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [view, setView] = useState<View>(() => ({ center: target.center, scale: scaleFor(target, size) }));
   const currentView = useRef(view);
@@ -213,6 +217,7 @@ export default function CommandMap({
   const sos = activeLayers.sos_mesh ? sosPackets : [];
   const routes = activeLayers.vedas_corridors ? dispatches : [];
   const usingGoogle = googleStatus === "ready" && !offline;
+  const tilted = allowTilt && tilt && !usingGoogle;
 
   useEffect(() => {
     if (!usingGoogle || !googleMap.current || !window.google) return;
@@ -307,17 +312,33 @@ export default function CommandMap({
     if (map && usingGoogle) map.setZoom((map.getZoom() ?? target.zoom) + direction);
   };
 
-  const startDrag = (event: PointerEvent<SVGSVGElement>) => {
+  const pointerPosition = (event: PointerEvent<HTMLDivElement>): Point => {
+    const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - left;
+    const y = event.clientY - top;
+    if (!tilted) return [x, y];
+    // Undo the CSS perspective before using the pointer in the geographic projection.
+    const { depth, zoom, origin } = TERRAIN_VIEW;
+    const ox = width / 2;
+    const oy = height * origin;
+    const screenY = y - oy;
+    const sin = Math.sin(TERRAIN_RADIANS);
+    const mapY = screenY / (zoom * (Math.cos(TERRAIN_RADIANS) + screenY * sin / depth));
+    return [ox + (x - ox) * (1 - zoom * mapY * sin / depth) / zoom, oy + mapY];
+  };
+  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as Element).closest("[data-map-action]")) return;
     if (animation.current !== undefined) cancelAnimationFrame(animation.current);
+    const [x, y] = pointerPosition(event);
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, y: event.clientY, center: view.center, scale: view.scale, moved: false };
+    drag.current = { x, y, center: view.center, scale: view.scale, moved: false };
   };
-  const moveDrag = (event: PointerEvent<SVGSVGElement>) => {
+  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const start = drag.current;
     if (!start) return;
-    const dx = start.x - event.clientX;
-    const dy = event.clientY - start.y;
+    const [x, y] = pointerPosition(event);
+    const dx = start.x - x;
+    const dy = y - start.y;
     if (!start.moved && Math.hypot(dx, dy) < 4) return;
     start.moved = true;
     setDragging(true);
@@ -327,20 +348,19 @@ export default function CommandMap({
         Math.min(42, Math.max(4, start.center[1] + dy / start.scale))],
     });
   };
-  const stopDrag = (event: PointerEvent<SVGSVGElement>) => {
+  const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
     const start = drag.current;
     drag.current = undefined;
     setDragging(false);
-    if (!start || start.moved || !onPoint || event.type === "pointercancel") return;
-    const box = event.currentTarget.getBoundingClientRect();
-    const point = unproject(event.clientX - box.left, event.clientY - box.top);
+    if (!start || start.moved || !onPoint || event.type !== "pointerup") return;
+    const point = unproject(...pointerPosition(event));
     if (inBounds(point, INDIA.bbox)) onPoint(point);
   };
 
-  const kmPerPixel = 111.32 / Math.max(1, view.scale);
+  const kmPerPixel = 111.32 / Math.max(1, view.scale * (tilted ? TERRAIN_VIEW.zoom : 1));
   const scaleKm = [1000, 500, 250, 100, 50, 25, 10, 5, 2, 1].find((km) => km / kmPerPixel <= 106) ?? .5;
   const googleBadge = usingGoogle ? "Google Maps" : googleStatus === "loading" ? "Loading Google Maps…" : (
-    mapStyle === "roadmap" ? "Local vector map" : "Bundled satellite terrain"
+    mapStyle === "roadmap" ? "India basemap" : "NASA terrain"
   );
   const gridStep = national ? 5 : view.scale < 150 ? 1 : .1;
   const firstLongitude = Math.ceil((view.center[0] - size.width / 2 / sx) / gridStep) * gridStep;
@@ -350,15 +370,21 @@ export default function CommandMap({
 
   return (
     <div className="map-canvas" ref={shell} aria-label={`Interactive map of ${target.label}`}>
-      <svg className={`local-map ${dragging ? "dragging" : ""}`} width="100%" height="100%"
-        viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="India map and map markers"
-        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag}>
+      <div hidden={usingGoogle} className={`map-surface${dragging ? " dragging" : ""}`}
+        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag}
+        onLostPointerCapture={stopDrag}>
+      <svg className="local-map" width="100%" height="100%"
+        style={tilted ? {
+          transform: `perspective(${TERRAIN_VIEW.depth}px) rotateX(${TERRAIN_VIEW.angle}deg) scale(${TERRAIN_VIEW.zoom})`,
+          transformOrigin: `50% ${TERRAIN_VIEW.origin * 100}%`,
+        } : undefined}
+        viewBox={`0 0 ${size.width} ${size.height}`} role="group" aria-label="India map and map markers">
         <defs>
           <radialGradient id="map-vignette"><stop offset="45%" stopColor="#030916" stopOpacity="0" /><stop offset="100%" stopColor="#030916" stopOpacity=".28" /></radialGradient>
         </defs>
         <rect width={size.width} height={size.height} fill="var(--map-sea)" />
         {mapStyle !== "roadmap" && (
-          <image href="/india-terrain.webp" x={pictureX} y={pictureY}
+          <image className={`map-terrain map-terrain-${mapStyle}`} href="/india-terrain.webp" x={pictureX} y={pictureY}
             width={(boundsForImage[2] - boundsForImage[0]) * sx}
             height={(boundsForImage[3] - boundsForImage[1]) * view.scale} preserveAspectRatio="none" />
         )}
@@ -428,6 +454,7 @@ export default function CommandMap({
           </g>;
         })}
       </svg>
+      </div>
       <div ref={googleHost} aria-hidden={!usingGoogle}
         className={`google-map ${usingGoogle ? "google-map-visible" : ""}`} />
       <div className="map-source"><Radar size={14} aria-hidden /> {googleBadge}</div>
@@ -440,6 +467,8 @@ export default function CommandMap({
         <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => zoom(-1)}><Minus size={17} /></button>
         <button type="button" aria-label="Recenter map" title="Recenter map" onClick={recenter}><Crosshair size={16} /></button>
         {onLayers && <button type="button" aria-label="Map layers" title="Map layers" onClick={onLayers}><Layers3 size={16} /></button>}
+        {allowTilt && !usingGoogle && <button type="button" aria-label="Tilt map" aria-pressed={tilted}
+          title={tilted ? "Return to flat map" : "Tilt the bundled map"} onClick={() => setTilt(!tilt)}><Box size={16} /></button>}
       </div>
       {!usingGoogle && <div className="map-scale" aria-label={`Map scale ${scaleKm} kilometers`}>
         <span style={{ width: scaleKm / kmPerPixel }} /> <span>{scaleKm} km</span>

@@ -21,9 +21,27 @@ To change settings, copy [`.env.example`](.env.example) to `.env` and edit the c
 
 Enable the Maps JavaScript API and billing in Google Cloud. Create a browser key, restrict it to the Maps JavaScript API and the site's HTTP referrer, and set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in `.env`. For local use, add `http://localhost:3000/*` to the allowed referrers. [Google Maps setup](https://developers.google.com/maps/documentation/javascript/get-api-key)
 
-**Satellite**, **Hybrid** and **Map** use Google Maps when available. The app switches to its bundled terrain and vector map when the key is absent, Google Maps fails to load, the browser goes offline or the network blackout exercise is active. Place search includes the seven basin presets, cities and state capitals, aliases, and current map alerts. A working Google Maps key enables wider place search when connected.
+**Satellite**, **Hybrid** and **Map** use Google Maps when available. The app switches to its bundled terrain and vector map when the key is absent, Google Maps fails to load, the browser goes offline or the network blackout exercise is active. The cube control tilts the bundled map while keeping incident markers and routes aligned. Place search includes the seven basin presets, cities and state capitals, aliases, and current map alerts. A working Google Maps key enables wider place search when connected. If you open `127.0.0.1:3000`, add `http://127.0.0.1:3000/*` to the key's allowed referrers too.
 
 The bundled background uses [NASA Blue Marble](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography-bathymetry/). The vector map uses [Natural Earth, India viewpoint](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/).
+
+## India Weather and Farm Planner
+
+[India Weather](http://localhost:3000/weather) shows current model conditions and daily forecasts at 36 reference locations, one for each state and union territory. Select a location to open [Farm Planner](http://localhost:3000/farm). Search by village, town or PIN code, use a preset such as Wayanad, or use browser location with permission. Farm Planner shows the next five days and uses rain chances and wind gusts to find possible work windows over the next 48 hours. It rounds field coordinates to two decimal places before requesting a forecast.
+
+The backend uses Open-Meteo and marks cached forecasts when a refresh fails. The public endpoint suits a non-commercial demo. Set server-side `OPEN_METEO_API_KEY` to use a paid endpoint. IMD links on both pages open the official district warnings and crop advisories. Disaster layers still use the source status shown in Settings. [Open-Meteo documentation](https://open-meteo.com/en/docs) · [IMD district warnings](https://mausam.imd.gov.in/responsive/districtWiseWarningGIS.php)
+
+## Government Portal
+
+The [Government Portal](http://localhost:3000/government) accepts accounts provisioned by a TerraPulse administrator. Signed-in officers can read exercise SOS notes, mark requests resolved, and review the four disaster data sources. Public SOS responses omit the notes.
+
+From `backend/`, generate a password hash for each officer account.
+
+```bash
+python -m app.services.government_auth --email officer@example.gov.in --agency "District Emergency Operations"
+```
+
+Add the generated `GOVERNMENT_ACCOUNTS` line to the root `.env` and restart the backend. Combine the JSON records into a single array for multiple accounts. Use verified work emails when provisioning real staff. Set `APP_ENV=production`, serve over HTTPS, and include the frontend URL in `CORS_ORIGINS` for a hosted installation. Sessions and the exercise response queue are held by the running API process and reset when it restarts.
 
 ## Three-minute demo
 

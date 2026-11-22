@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.api.ws_live import ws_manager
@@ -12,6 +13,7 @@ from app.models.schemas import (
     PositionModel, SOSPacket, TriageModel,
 )
 from app.models.state import state_store
+from app.services.government_auth import require_officer
 from app.services.mesh_relay_service import MAX_ACTIVE_SOS, mesh_relay_service
 
 router = APIRouter(prefix="/api", tags=["Rescue & Safe Routes"])
@@ -57,7 +59,7 @@ class DispatchPushRequest(BaseModel):
 
 @router.get("/sos", response_model=list[SOSPacket], response_model_exclude_none=True)
 async def list_sos_beacons() -> list[SOSPacket]:
-    return list(state_store.sos_packets.values())
+    return [packet.public_view() for packet in state_store.sos_packets.values()]
 
 
 @router.post("/sos", response_model=SOSPacket | list[SOSPacket], response_model_exclude_none=True)
@@ -76,13 +78,13 @@ async def ingest_sos_beacon(payload: SOSPacket | Batch | SimpleSOSRequest):
     packets = payload if batch else [payload]
     if any(not contains(settings.india_bbox, (p.position.lng, p.position.lat)) for p in packets):
         raise HTTPException(422, "Choose a location within the India coverage area.")
-    new_ids = {p.sos_id for p in packets} - state_store.sos_packets.keys()
+    new_ids = {p.sos_id for p in packets} - state_store.sos_packets.keys() - state_store.resolved_sos.keys()
     if len(state_store.sos_packets) + len(new_ids) > MAX_ACTIVE_SOS:
         raise HTTPException(503, "The exercise rescue queue is full. Try syncing again later.")
     saved = [mesh_relay_service.register_or_enrich_sos(packet) for packet in packets]
     for sos_id in dict.fromkeys(packet.sos_id for packet in saved if packet.sos_id in new_ids):
         await ws_manager.broadcast("sos_received", {"sos_id": sos_id})
-    return saved if batch else saved[0]
+    return [packet.public_view() for packet in saved] if batch else saved[0].public_view()
 
 
 @router.post("/sos/{sos_id}/relay", response_model=SOSPacket, response_model_exclude_none=True)
@@ -96,14 +98,18 @@ async def relay_sos(sos_id: str) -> SOSPacket:
     if not state_store.cellular_online:
         packet.mesh.sync_status = MeshSyncStatus.RELAYED_MESH
     await ws_manager.broadcast("state_updated", {"reason": "sos_relayed"})
-    return packet
+    return packet.public_view()
 
 
-@router.post("/sos/{sos_id}/resolve")
+@router.post("/sos/{sos_id}/resolve", dependencies=[Depends(require_officer)])
 async def resolve_sos(sos_id: str) -> dict:
-    if state_store.sos_packets.pop(sos_id, None) is None:
+    packet = state_store.sos_packets.pop(sos_id, None)
+    if packet is None and sos_id not in state_store.resolved_sos:
         raise HTTPException(404, "This help request could not be found.")
-    await ws_manager.broadcast("state_updated", {"reason": "sos_resolved"})
+    if packet is not None:
+        state_store.resolved_sos[sos_id] = packet.public_view()
+        state_store.last_updated = datetime.now(timezone.utc).isoformat()
+        await ws_manager.broadcast("state_updated", {"reason": "sos_resolved"})
     return {"status": "RESOLVED"}
 
 

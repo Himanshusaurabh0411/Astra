@@ -30,6 +30,8 @@ class Settings(BaseSettings):
 
     SEED_DATA_PATH: str | None = None
     CONTRACTS_DIR: str | None = None
+    GOVERNMENT_ACCOUNTS: SecretStr | None = None
+    OPEN_METEO_API_KEY: SecretStr | None = None
     PORTAL_FETCH_TIMEOUT_SECONDS: float = Field(default=3.0, gt=0, le=15)
     PORTAL_MAX_RESPONSE_BYTES: int = Field(default=5_000_000, ge=1024, le=25_000_000)
 
