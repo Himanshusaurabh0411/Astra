@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { SEEDED_DISPATCHES } from "@/lib/offlineStore";
+import { addServerDispatch, getServerStore } from "@/lib/serverState";
+import type { DispatchVector } from "@/lib/terrapulseClient";
 
 export async function GET() {
-  return NextResponse.json(SEEDED_DISPATCHES);
+  const store = getServerStore();
+  return NextResponse.json(store.dispatches);
 }
 
 export async function POST(req: Request) {
@@ -12,10 +14,10 @@ export async function POST(req: Request) {
     const path = body.corridor_coordinates ?? [
       [77.05, 23.18], [77.12, 23.20], [77.18, 23.22], [77.215, 23.238]
     ];
-    const data = {
+    const data: DispatchVector = {
       dispatch_id: `DSP-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
       issued_at: new Date().toISOString(),
-      mode: body.mode ?? "NORMAL",
+      mode: body.mode ?? getServerStore().mode,
       target_zone_id: body.target_zone_id ?? targetRegion,
       alert_headline: body.alert_headline ?? "Follow marked higher-ground corridor to verified relief shelter.",
       safe_asset: {
@@ -27,6 +29,7 @@ export async function POST(req: Request) {
       payload_kb: 1.2,
       saved_locally: true,
     };
+    addServerDispatch(data);
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 400 });

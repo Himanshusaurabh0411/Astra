@@ -110,6 +110,9 @@ export default function Dashboard() {
       });
     };
     setBrowserOffline(!navigator.onLine);
+    if (window.location.hash === "#settings" || new URLSearchParams(window.location.search).get("nav") === "settings") {
+      setNav("settings");
+    }
     refresh();
     void fetchRegions().then((result) => { if (alive) setRegions(result); });
     const cancel = subscribeToTelemetry((event) => {
@@ -218,23 +221,30 @@ export default function Dashboard() {
   });
 
   const changeMode = () => run(blackout ? "Restoring connection…" : "Simulating blackout…", async () => {
-    const update = await switchOperationalMode(blackout ? "BACKHAUL_SYNC" : "CELL_BLACKOUT_MESH_ACTIVE");
+    const nextMode = blackout ? "BACKHAUL_SYNC" : "CELL_BLACKOUT_MESH_ACTIVE";
+    const update = await switchOperationalMode(nextMode);
     setSnapshot({ ...update });
     const title = blackout ? "Connection restored" : "Network blackout simulated";
-    const detail = blackout ? "Field responders can sync their queued exercise requests." : "Field responders can save help requests while the mobile network is down.";
+    const detail = blackout
+      ? "Field responders can sync their queued exercise requests. Backhaul is online."
+      : "Cellular backhaul severed. Off-grid LoRa 865 MHz peer-to-peer mesh routing is active.";
     setNotice({ title, detail });
     log(activity(title, detail, "mesh"));
   });
 
   const sendRoute = (area = brief.region) => run("Sending safe route…", async () => {
     const corridorId = selection?.kind === "feature" && selection.feature.properties.road_status === "CORRIDOR" ? selection.feature.id : undefined;
-    const dispatch = await pushEvacuationDispatch({ region: area.id, corridor_id: corridorId });
+    const targetRegion = area.id === INDIA.id ? getRegion("central-india") : area;
+    const dispatch = await pushEvacuationDispatch({ region: targetRegion.id, corridor_id: corridorId });
     const title = dispatch.saved_locally ? "Route saved on this device" : "Safe route shared";
     const detail = dispatch.saved_locally ? `${dispatch.safe_asset.name} is available in the local map.`
       : `Field responders can open the route to ${dispatch.safe_asset.name}.`;
     setNotice({ title, detail });
+    chooseRegion(targetRegion);
+    setTarget({ center: [dispatch.safe_asset.lng, dispatch.safe_asset.lat], zoom: 11, label: dispatch.safe_asset.name });
+    setLayers((old) => ({ ...old, vedas_corridors: true }));
     const local = compileLocalState();
-    setSnapshot({ ...local, dispatches: [...local.dispatches] });
+    setSnapshot({ ...local, dispatches: [dispatch, ...local.dispatches.filter((d) => d.dispatch_id !== dispatch.dispatch_id)] });
     log(activity(title, detail, "mesh"));
   });
 

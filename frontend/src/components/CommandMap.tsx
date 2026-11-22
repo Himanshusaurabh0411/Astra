@@ -158,6 +158,64 @@ export const TACTICAL_EMERGENCIES: TacticalEmergency[] = [
   },
 ];
 
+// Major Indian Highway Network for Roadmap & Hybrid Modes
+const NATIONAL_HIGHWAYS: { name: string; number: string; type: "golden" | "corridor" | "evac"; coords: Point[] }[] = [
+  // Golden Quadrilateral
+  { name: "Delhi-Mumbai Highway", number: "NH-48", type: "golden", coords: [[77.21, 28.61], [75.82, 26.92], [74.63, 24.88], [73.18, 22.30], [72.83, 21.17], [72.88, 19.08]] },
+  { name: "Mumbai-Chennai Highway", number: "NH-48", type: "golden", coords: [[72.88, 19.08], [73.85, 18.52], [74.24, 16.70], [75.91, 14.46], [77.59, 12.97], [79.13, 12.92], [80.27, 13.08]] },
+  { name: "Chennai-Kolkata Highway", number: "NH-16", type: "golden", coords: [[80.27, 13.08], [80.05, 14.44], [80.64, 16.51], [82.23, 16.98], [83.21, 17.68], [85.82, 20.30], [86.92, 21.49], [87.32, 22.34], [88.36, 22.57]] },
+  { name: "Kolkata-Delhi GT Road", number: "NH-19", type: "golden", coords: [[88.36, 22.57], [87.08, 23.68], [85.31, 23.34], [84.99, 24.79], [83.00, 25.31], [81.84, 25.43], [80.33, 26.44], [78.01, 27.18], [77.21, 28.61]] },
+  // North-South & East-West Corridors
+  { name: "North-South Corridor", number: "NH-44", type: "corridor", coords: [[74.80, 34.08], [74.86, 32.73], [75.86, 30.90], [76.99, 29.69], [77.21, 28.61], [77.72, 27.50], [78.17, 26.22], [78.57, 25.45], [78.80, 23.83], [79.08, 21.14], [78.49, 17.39], [77.98, 15.83], [77.59, 12.97], [78.16, 11.66], [78.12, 9.92], [77.54, 8.08]] },
+  { name: "East-West Corridor", number: "NH-27", type: "corridor", coords: [[69.60, 21.64], [70.80, 22.30], [72.64, 23.22], [73.68, 24.58], [75.83, 25.18], [77.65, 25.43], [78.57, 25.45], [80.33, 26.44], [80.95, 26.85], [83.37, 26.76], [85.39, 26.12], [88.36, 26.72], [89.98, 26.50], [91.74, 26.14], [92.79, 24.83]] },
+  // Emergency Evacuation Corridor
+  { name: "Central Ridge Evacuation Corridor", number: "NH-46", type: "evac", coords: [[75.86, 22.72], [76.35, 22.96], [77.05, 23.15], [77.20, 23.18], [77.41, 23.26], [78.74, 23.83]] },
+];
+
+// Major Indian Cities
+const MAJOR_CITIES: { name: string; point: Point; tier: 1 | 2 }[] = [
+  { name: "NEW DELHI", point: [77.21, 28.61], tier: 1 },
+  { name: "MUMBAI", point: [72.88, 19.08], tier: 1 },
+  { name: "BENGALURU", point: [77.59, 12.97], tier: 1 },
+  { name: "CHENNAI", point: [80.27, 13.08], tier: 1 },
+  { name: "KOLKATA", point: [88.36, 22.57], tier: 1 },
+  { name: "HYDERABAD", point: [78.49, 17.39], tier: 1 },
+  { name: "AHMEDABAD", point: [72.57, 23.02], tier: 2 },
+  { name: "BHOPAL", point: [77.41, 23.26], tier: 2 },
+  { name: "JAIPUR", point: [75.82, 26.92], tier: 2 },
+  { name: "LUCKNOW", point: [80.95, 26.85], tier: 2 },
+  { name: "PATNA", point: [85.14, 25.61], tier: 2 },
+  { name: "GUWAHATI", point: [91.74, 26.14], tier: 2 },
+  { name: "SRINAGAR", point: [74.80, 34.08], tier: 2 },
+  { name: "BHUBANESWAR", point: [85.82, 20.30], tier: 2 },
+];
+
+// Topographic Mountain Peaks for Terrain Mode
+const MOUNTAIN_PEAKS: { name: string; elevation: string; point: Point }[] = [
+  { name: "Kanchenjunga", elevation: "8,586m", point: [88.14, 27.70] },
+  { name: "Nanda Devi", elevation: "7,816m", point: [79.97, 30.37] },
+  { name: "Anamudi", elevation: "2,695m", point: [77.06, 10.17] },
+  { name: "Dodabetta", elevation: "2,637m", point: [76.73, 11.40] },
+  { name: "Guru Shikhar", elevation: "1,722m", point: [72.78, 24.65] },
+  { name: "Kalsubai", elevation: "1,646m", point: [73.71, 19.60] },
+];
+
+// Major Rivers for Terrain Mode
+const MAJOR_RIVERS: { name: string; path: Point[] }[] = [
+  { name: "Ganga", path: [[78.60, 30.15], [78.16, 29.95], [80.33, 26.44], [81.84, 25.43], [83.00, 25.31], [85.14, 25.61], [87.57, 25.25], [88.16, 24.80], [88.36, 22.57]] },
+  { name: "Brahmaputra", path: [[95.35, 28.15], [94.90, 27.48], [92.80, 26.65], [91.74, 26.14], [89.98, 26.00]] },
+  { name: "Narmada", path: [[81.75, 22.67], [79.95, 23.16], [77.73, 22.75], [75.60, 22.18], [72.98, 21.70], [72.58, 21.65]] },
+  { name: "Godavari", path: [[73.53, 19.93], [75.33, 19.88], [77.30, 19.15], [79.55, 18.77], [81.78, 16.98], [82.23, 16.73]] },
+  { name: "Krishna", path: [[73.66, 17.92], [75.87, 16.83], [77.35, 16.52], [80.64, 16.51], [80.90, 15.78]] },
+];
+
+const ENGINE_TITLES: Record<MapStyle, { name: string; count: string }> = {
+  hybrid: { name: "Google Maps Satellite Engine", count: "9 Emergencies Mapped" },
+  satellite: { name: "Sentinel-2 / Landsat Satellite Feed", count: "Multi-Spectral Band 8A" },
+  terrain: { name: "Cartosat DEM Topographic Elevation", count: "Shaded Relief Active" },
+  roadmap: { name: "National Highway Logistics Grid", count: "All Corridors Open" },
+};
+
 interface Props {
   target: MapTarget;
   features: GeoJsonFeature[];
@@ -536,15 +594,17 @@ export default function CommandMap({
   const currentLat = view.center[1].toFixed(4);
   const currentLng = view.center[0].toFixed(4);
 
+  const engineInfo = ENGINE_TITLES[mapStyle] || ENGINE_TITLES.hybrid;
+
   return (
-    <div className={`map-canvas ${allowTilt && tilt ? "map-tilted" : ""}`} ref={shell} aria-label={`Interactive map of ${target.label}`}>
+    <div className={`map-canvas ${allowTilt && tilt ? "map-tilted" : ""} map-canvas-${mapStyle}`} ref={shell} aria-label={`Interactive map of ${target.label}`}>
       {/* 1. TOP HEADER BAR INSIDE MAP */}
       <div className="tp-map-top-bar">
         <div className="tp-map-engine-badge">
-          <span className="tp-glow-dot-emerald" />
-          <span className="engine-name">Google Maps Satellite Engine</span>
+          <span className={offline ? "tp-glow-dot-amber" : "tp-glow-dot-emerald"} />
+          <span className="engine-name">{offline ? "⚡ Offline LoRa Mesh (865.2 MHz)" : engineInfo.name}</span>
           <span className="engine-sep">|</span>
-          <span className="engine-count">9 Emergencies Mapped</span>
+          <span className="engine-count">{offline ? "NavIC Locked · 6 Relay Hops Active" : engineInfo.count}</span>
         </div>
 
         <div className="map-types" role="group" aria-label="Map view mode">
@@ -636,8 +696,14 @@ export default function CommandMap({
           </radialGradient>
         </defs>
 
-        <rect width={size.width} height={size.height} fill="var(--map-sea)" />
+        {/* Ocean Background */}
+        <rect
+          width={size.width}
+          height={size.height}
+          fill={mapStyle === "roadmap" ? "#0a1322" : mapStyle === "satellite" ? "#020617" : "var(--map-sea)"}
+        />
 
+        {/* Subcontinent Terrain/Satellite Image */}
         {mapStyle !== "roadmap" && (
           <image
             href="/india-terrain.webp"
@@ -646,10 +712,12 @@ export default function CommandMap({
             width={(boundsForImage[2] - boundsForImage[0]) * sx}
             height={(boundsForImage[3] - boundsForImage[1]) * view.scale}
             preserveAspectRatio="none"
+            className={`map-img-${mapStyle}`}
           />
         )}
 
-        {hasScene && satelliteFrame?.url && (
+        {/* Live Sentinel-2 Scene Layer when active */}
+        {hasScene && satelliteFrame?.url && mapStyle !== "roadmap" && (
           <image
             href={satelliteFrame.url}
             x={ox + scene[0] * sx}
@@ -661,21 +729,113 @@ export default function CommandMap({
           />
         )}
 
+        {/* Land Silhouette & Country Borders */}
         <g transform={`matrix(${sx} 0 0 ${-view.scale} ${ox} ${oy})`} pointerEvents="none">
           {borderPaths.map(({ path, india }, index) => (
             <path
               key={index}
               d={path}
-              fill={mapStyle === "roadmap" ? (india ? "var(--map-land)" : "var(--map-neighbor)") : "none"}
-              stroke={india ? "var(--map-border)" : "var(--map-border-muted)"}
-              strokeWidth={india ? 1.05 : .55}
-              strokeOpacity={mapStyle === "satellite" ? .6 : .95}
+              fill={mapStyle === "roadmap" ? (india ? "#111c2e" : "#0d1524") : "none"}
+              stroke={india ? (mapStyle === "roadmap" ? "#0284c7" : "var(--map-border)") : "var(--map-border-muted)"}
+              strokeWidth={india ? (mapStyle === "roadmap" ? 1.5 : 1.05) : .55}
+              strokeOpacity={mapStyle === "satellite" ? .3 : mapStyle === "roadmap" ? .95 : .85}
               vectorEffect="non-scaling-stroke"
             />
           ))}
         </g>
 
-        {national && (
+        {/* TERRAIN MODE: Topographic Overlays, Mountain Peaks, and River Drainages */}
+        {mapStyle === "terrain" && (
+          <g className="map-terrain-overlays" pointerEvents="none">
+            {MAJOR_RIVERS.map((river) => {
+              const d = river.path.map((pt, i) => {
+                const [x, y] = project(pt);
+                return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+              }).join(" ");
+              return (
+                <path
+                  key={river.name}
+                  d={d}
+                  fill="none"
+                  stroke="#38bdf8"
+                  strokeWidth="2.2"
+                  strokeOpacity="0.85"
+                  strokeLinecap="round"
+                />
+              );
+            })}
+
+            {MOUNTAIN_PEAKS.map((peak) => {
+              const [x, y] = project(peak.point);
+              if (x < -20 || x > size.width + 20 || y < -20 || y > size.height + 20) return null;
+              return (
+                <g key={peak.name} transform={`translate(${x},${y})`}>
+                  <polygon points="0,-7 6,4 -6,4" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.2" />
+                  <text x={8} y={3} className="map-peak-label">{peak.name} ({peak.elevation})</text>
+                </g>
+              );
+            })}
+          </g>
+        )}
+
+        {/* ROADMAP & HYBRID MODES: Major National Highway Corridors & Logistical Cities */}
+        {(mapStyle === "roadmap" || mapStyle === "hybrid") && (
+          <g className="map-highways-layer" pointerEvents="none">
+            {NATIONAL_HIGHWAYS.map((hwy) => {
+              const d = hwy.coords.map((pt, i) => {
+                const [x, y] = project(pt);
+                return `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+              }).join(" ");
+              const isRoadmap = mapStyle === "roadmap";
+              const strokeColor = hwy.type === "golden" ? "#f59e0b" : hwy.type === "evac" ? "#22c55e" : "#06b6d4";
+              const strokeWidth = hwy.type === "evac" ? (isRoadmap ? 3.8 : 2.8) : hwy.type === "golden" ? (isRoadmap ? 3.2 : 2.2) : (isRoadmap ? 2.5 : 1.6);
+              return (
+                <g key={hwy.name}>
+                  {isRoadmap && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth + 3.5}
+                      strokeOpacity="0.25"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    strokeOpacity={isRoadmap ? 0.95 : 0.75}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={hwy.type === "evac" ? "6 4" : undefined}
+                  />
+                </g>
+              );
+            })}
+
+            {MAJOR_CITIES.map((city) => {
+              const [x, y] = project(city.point);
+              if (x < -20 || x > size.width + 20 || y < -20 || y > size.height + 20) return null;
+              const isRoadmap = mapStyle === "roadmap";
+              return (
+                <g key={city.name} transform={`translate(${x},${y})`}>
+                  <circle r={city.tier === 1 ? 5 : 3.5} fill="#ffffff" stroke={isRoadmap ? "#0284c7" : "#0f172a"} strokeWidth="2" />
+                  {city.tier === 1 && (
+                    <circle r="9" fill="none" stroke="#38bdf8" strokeWidth="1" strokeOpacity="0.6" />
+                  )}
+                  <text x={city.tier === 1 ? 8 : 6} y={3} className={`map-city-node ${city.tier === 1 ? "tier-1" : ""}`}>
+                    {city.name}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
+
+        {national && mapStyle !== "roadmap" && (
           <g className="map-geography" aria-hidden="true" pointerEvents="none">
             <text x={project([81.5, 23.1])[0]} y={project([81.5, 23.1])[1]} className="map-country" textAnchor="middle">INDIA</text>
             <text x={project([67.3, 12.9])[0]} y={project([67.3, 12.9])[1]} textAnchor="middle" className="map-sea-label">Arabian Sea</text>
@@ -685,6 +845,7 @@ export default function CommandMap({
 
         <rect width={size.width} height={size.height} fill="url(#map-vignette)" pointerEvents="none" />
 
+        {/* Disaster & Risk Layers */}
         {visible.filter(drawFeature).map((feature, index) => {
           const d = geometryPath(feature.geometry, project);
           if (!d) return null;
@@ -719,18 +880,65 @@ export default function CommandMap({
           );
         })}
 
-        {!national && routes.map((dispatch) => (
-          <path
-            key={dispatch.dispatch_id}
-            d={geometryPath(dispatch.evacuation_corridor, project)}
-            fill="none"
-            stroke={ROUTE_COLOR}
-            strokeWidth="3"
-            strokeDasharray="6 5"
-            strokeOpacity=".9"
-            pointerEvents="none"
-          />
-        ))}
+        {/* Active Evacuation Dispatches */}
+        {routes.map((dispatch) => {
+          const d = geometryPath(dispatch.evacuation_corridor, project);
+          const [sx, sy] = project([dispatch.safe_asset.lng, dispatch.safe_asset.lat]);
+          return (
+            <g key={dispatch.dispatch_id} className="map-dispatch-corridor" pointerEvents="none">
+              <path
+                d={d}
+                fill="none"
+                stroke="#22c55e"
+                strokeWidth={national ? 5 : 7}
+                strokeOpacity={0.35}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={d}
+                fill="none"
+                stroke="#4ade80"
+                strokeWidth={national ? 2.5 : 3.5}
+                strokeDasharray="6 4"
+                strokeOpacity={0.95}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <g transform={`translate(${sx},${sy})`}>
+                <circle r="12" fill="#22c55e" fillOpacity="0.3" />
+                <circle r="6" fill="#22c55e" stroke="#ffffff" strokeWidth="2" />
+                <text x="9" y="4" className="map-marker-label" fill="#86efac">
+                  {dispatch.safe_asset.name}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Offline LoRa Tactical Mesh Links (when offline / blackout active) */}
+        {offline && (
+          <g className="map-mesh-overlay" pointerEvents="none">
+            {TACTICAL_EMERGENCIES.filter((e) => e.type === "squad").slice(0, 2).map((squad, i, arr) => {
+              const nextSquad = arr[i + 1] ?? arr[0];
+              const [x1, y1] = project(squad.point);
+              const [x2, y2] = project(nextSquad.point);
+              return (
+                <line
+                  key={squad.id}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke="#38bdf8"
+                  strokeWidth="2"
+                  strokeDasharray="5 5"
+                  strokeOpacity="0.85"
+                />
+              );
+            })}
+          </g>
+        )}
 
         {markers.map(({ id, label, point, color, shape, pulse, select, offset }) => {
           const [px, py] = project(point);
@@ -858,9 +1066,10 @@ export default function CommandMap({
         <div className="hud-sep" />
 
         <div className="hud-col hud-satellite">
-          <span className="hud-sat-title">SENTINEL-2 / EOS-06</span>
+          <span className="hud-sat-title">{offline ? "NAVIC + LORA MESH" : "SENTINEL-2 / EOS-06"}</span>
           <span className="hud-sat-status">
-            <span className="hud-green-dot" /> MULTISPECTRAL FEED: ONLINE
+            <span className={offline ? "tp-glow-dot-amber" : "hud-green-dot"} style={{ width: 6, height: 6 }} />{" "}
+            {offline ? "OFFLINE MESH: 865.2 MHz" : "MULTISPECTRAL FEED: ONLINE"}
           </span>
         </div>
 
