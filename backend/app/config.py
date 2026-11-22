@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     CONTRACTS_DIR: str | None = None
     GOVERNMENT_ACCOUNTS: SecretStr | None = None
     OPEN_METEO_API_KEY: SecretStr | None = None
-    SOS_EMAIL_TO: str | None = None
+    SOS_EMAIL_TO: str | None = "personalhimanshu.0411@gmail.com"
     SOS_EMAIL_FROM: str | None = None
     SOS_SMTP_HOST: str | None = None
     SOS_SMTP_PORT: int = Field(default=587, ge=1, le=65535)
