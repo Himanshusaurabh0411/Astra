@@ -22,14 +22,14 @@ export async function POST(req: Request) {
     let path = body.corridor_coordinates;
 
     if (!path || !safeName) {
-      if (targetRegion === "brahmaputra" || targetRegion.includes("assam")) {
+      if (targetRegion === "northeast-india" || targetRegion === "brahmaputra" || targetRegion.includes("assam") || targetRegion.includes("northeast") || targetRegion.includes("guwahati")) {
         safeName = safeName ?? "Chandrapur High-Ground Evacuation Shelter (Guwahati)";
         safeLng = safeLng ?? 91.920;
         safeLat = safeLat ?? 26.190;
         path = path ?? [
           [91.740, 26.140], [91.810, 26.160], [91.870, 26.180], [91.920, 26.190]
         ];
-      } else if (targetRegion === "western-ghats" || targetRegion.includes("wayanad")) {
+      } else if (targetRegion === "western-ghats" || targetRegion.includes("wayanad") || targetRegion.includes("ghat")) {
         safeName = safeName ?? "Vythiri High-Elevation Relief Command Center (Wayanad)";
         safeLng = safeLng ?? 76.040;
         safeLat = safeLat ?? 11.550;
