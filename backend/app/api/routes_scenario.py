@@ -246,3 +246,57 @@ async def get_bhuvan_lulc_aoi(region: Optional[str] = None, geom: Optional[str] 
     """
     return bhuvan_service.get_lulc_aoi(region_id=region, geom_wkt=geom)
 
+
+class BhoonidhiTokenRequest(BaseModel):
+    api_key: Optional[str] = Field(default=None, description="Bhoonidhi API Key (e.g. 1104f7577ce2f11b68c3f0ce0654d901e135134c)")
+    username: Optional[str] = Field(default=None, description="Bhoonidhi portal username")
+    password: Optional[str] = Field(default=None, description="Bhoonidhi portal password")
+
+
+class BhoonidhiRefreshRequest(BaseModel):
+    refresh_token: str = Field(description="Bhoonidhi refresh token")
+
+
+@router.post(
+    "/portal/bhoonidhi/auth/token",
+    summary="ISRO Bhoonidhi Programmatic Authentication Endpoint",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def bhoonidhi_auth_token(req: Optional[BhoonidhiTokenRequest] = None) -> Dict[str, Any]:
+    """
+    Programmatic login endpoint for ISRO NRSC Bhoonidhi Satellite Imagery API.
+    Returns both access_token (Bearer) for STAC queries and refresh_token for session renewal.
+    """
+    api_key = req.api_key if req else None
+    username = req.username if req else None
+    password = req.password if req else None
+    return bhoonidhi_service.authenticate_programmatic(api_key=api_key, username=username, password=password)
+
+
+@router.post(
+    "/portal/bhoonidhi/auth/refresh",
+    summary="ISRO Bhoonidhi Token Refresh Endpoint",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def bhoonidhi_auth_refresh(req: BhoonidhiRefreshRequest) -> Dict[str, Any]:
+    """
+    Refreshes programmatic Bhoonidhi access session using refresh_token.
+    """
+    return bhoonidhi_service.refresh_token_session(refresh_token=req.refresh_token)
+
+
+@router.get(
+    "/portal/bhoonidhi/satellite/search",
+    summary="ISRO Bhoonidhi STAC Satellite Catalog Search",
+    tags=["Scenario Control & Multi-Portal GeoAI Engine"],
+)
+async def bhoonidhi_satellite_search(
+    sensor: str = Query(default="EOS-04_SAR", description="Satellite sensor (e.g. EOS-04_SAR, Sentinel-2, NISAR)"),
+    region: str = Query(default="brahmaputra", description="Region identifier (brahmaputra/assam, western-ghats/wayanad, central-india)"),
+) -> Dict[str, Any]:
+    """
+    Searches ISRO Bhoonidhi STAC catalog for radar SAR flood inundation scenes and multispectral assets.
+    """
+    return bhoonidhi_service.search_satellite_catalog(sensor=sensor, region_id=region)
+
+

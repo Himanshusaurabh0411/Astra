@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { addServerDispatch, getServerStore } from "@/lib/serverState";
 import type { DispatchVector } from "@/lib/terrapulseClient";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   const store = getServerStore();
   return NextResponse.json(store.dispatches);

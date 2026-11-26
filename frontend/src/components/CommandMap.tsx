@@ -210,7 +210,7 @@ const MAJOR_RIVERS: { name: string; path: Point[] }[] = [
 ];
 
 const ENGINE_TITLES: Record<MapStyle, { name: string; count: string }> = {
-  hybrid: { name: "TerraPulse Multispectral GeoEngine", count: "9 Emergencies Mapped" },
+  hybrid: { name: "Google Maps Satellite Engine", count: "9 Emergencies Mapped" },
   satellite: { name: "Sentinel-2 / Landsat Satellite Feed", count: "Multi-Spectral Band 8A" },
   terrain: { name: "Cartosat DEM Topographic Elevation", count: "Shaded Relief Active" },
   roadmap: { name: "National Highway Logistics Grid", count: "All Corridors Open" },
@@ -429,8 +429,12 @@ export default function CommandMap({
     googleMap.current?.setMapTypeId(mapStyle);
   }, [mapStyle]);
 
-  const visible = useMemo(() => features.filter((feature) =>
-    activeLayers[feature.properties.layer] && feature.properties.record_kind !== "crop_stress"), [features, activeLayers]);
+  const visible = useMemo(() => features.filter((feature) => {
+    if (!activeLayers[feature.properties.layer]) return false;
+    if (feature.properties.record_kind === "crop_stress") return false;
+    if (!filterRoutes && (feature.properties.layer === "vedas_corridors" || feature.properties.road_status === "CORRIDOR")) return false;
+    return true;
+  }), [features, activeLayers, filterRoutes]);
   const sos = activeLayers.sos_mesh ? sosPackets : [];
   const routes = (activeLayers.vedas_corridors && filterRoutes) ? dispatches : [];
   const usingGoogle = googleStatus === "ready" && !offline;
@@ -525,35 +529,35 @@ export default function CommandMap({
 
   // Dynamic high-resolution basemap tiles (ArcGIS Satellite, Topo, CartoDB Roadmap)
   const mapTiles = useMemo(() => {
-    if (offline) return [];
+    // Determine ideal Web Mercator zoom level from current scale
+    let z = Math.max(3, Math.min(15, Math.round(Math.log2(Math.max(1, (sx * 360) / 256)))));
 
-    // Derive target Web Mercator zoom level from current scale
-    const targetZ = Math.round(Math.log2(Math.max(1, (sx * 360) / 256)));
-    const z = Math.max(3, Math.min(15, targetZ));
-    const numTiles = 2 ** z;
+    // Try at current z, or step down if too many tiles are needed to maintain smooth 60 FPS
+    let minTileX = 0, maxTileX = 0, minTileY = 0, maxTileY = 0, numTiles = 2 ** z;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      numTiles = 2 ** z;
+      const [west, north] = unproject(0, 0);
+      const [east, south] = unproject(size.width, size.height);
 
-    const [west, north] = unproject(0, 0);
-    const [east, south] = unproject(size.width, size.height);
+      const minLng = Math.max(-180, Math.min(180, Math.min(west, east)));
+      const maxLng = Math.max(-180, Math.min(180, Math.max(west, east)));
+      const minLat = Math.max(-85, Math.min(85, Math.min(north, south)));
+      const maxLat = Math.max(-85, Math.min(85, Math.max(north, south)));
 
-    const minLng = Math.max(-180, Math.min(180, Math.min(west, east)));
-    const maxLng = Math.max(-180, Math.min(180, Math.max(west, east)));
-    const minLat = Math.max(-85, Math.min(85, Math.min(north, south)));
-    const maxLat = Math.max(-85, Math.min(85, Math.max(north, south)));
+      minTileX = Math.max(0, Math.floor(((minLng + 180) / 360) * numTiles));
+      maxTileX = Math.min(numTiles - 1, Math.floor(((maxLng + 180) / 360) * numTiles));
 
-    const minTileX = Math.max(0, Math.floor(((minLng + 180) / 360) * numTiles));
-    const maxTileX = Math.min(numTiles - 1, Math.floor(((maxLng + 180) / 360) * numTiles));
+      const latToTileY = (lat: number) => {
+        const rad = Math.max(-85, Math.min(85, lat)) * (Math.PI / 180);
+        return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) * (numTiles / 2);
+      };
 
-    const latToTileY = (lat: number) => {
-      const rad = Math.max(-85, Math.min(85, lat)) * (Math.PI / 180);
-      return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) * (numTiles / 2);
-    };
+      minTileY = Math.max(0, Math.floor(latToTileY(maxLat)));
+      maxTileY = Math.min(numTiles - 1, Math.floor(latToTileY(minLat)));
 
-    const minTileY = Math.max(0, Math.floor(latToTileY(maxLat)));
-    const maxTileY = Math.min(numTiles - 1, Math.floor(latToTileY(minLat)));
-
-    // Clamp tile count to maintain 60 FPS
-    if ((maxTileX - minTileX + 1) * (maxTileY - minTileY + 1) > 42) {
-      return [];
+      const count = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+      if (count <= 75 || z <= 3) break;
+      z--;
     }
 
     const items: { id: string; url: string; overlayUrl?: string; x: number; y: number; width: number; height: number }[] = [];
@@ -597,7 +601,7 @@ export default function CommandMap({
     }
 
     return items;
-  }, [offline, sx, size.width, size.height, mapStyle, ox, oy, view.scale, view.center]);
+  }, [sx, size.width, size.height, mapStyle, ox, oy, view.scale, view.center]);
 
   const recenter = () => {
     if (animation.current !== undefined) cancelAnimationFrame(animation.current);
@@ -839,7 +843,7 @@ export default function CommandMap({
             <path
               key={index}
               d={path}
-              fill={mapStyle === "roadmap" ? (india ? "#111c2e" : "#0d1524") : "none"}
+              fill={mapStyle === "roadmap" && mapTiles.length === 0 ? (india ? "#111c2e" : "#0d1524") : "none"}
               stroke={india ? (mapStyle === "roadmap" ? "#0284c7" : "var(--map-border)") : "var(--map-border-muted)"}
               strokeWidth={india ? (mapStyle === "roadmap" ? 1.5 : 1.05) : .55}
               strokeOpacity={mapStyle === "satellite" ? .3 : mapStyle === "roadmap" ? .95 : .85}
@@ -988,31 +992,42 @@ export default function CommandMap({
         {routes.map((dispatch) => {
           const d = geometryPath(dispatch.evacuation_corridor, project);
           const [sx, sy] = project([dispatch.safe_asset.lng, dispatch.safe_asset.lat]);
+          const labelWidth = Math.min(300, dispatch.safe_asset.name.length * 7.5 + 16);
           return (
             <g key={dispatch.dispatch_id} className="map-dispatch-corridor" pointerEvents="none">
               <path
                 d={d}
                 fill="none"
-                stroke="#22c55e"
-                strokeWidth={national ? 5 : 7}
-                strokeOpacity={0.35}
+                stroke="#064e3b"
+                strokeWidth={national ? 8 : 11}
+                strokeOpacity={0.85}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
               <path
                 d={d}
                 fill="none"
-                stroke="#4ade80"
+                stroke="#22c55e"
+                strokeWidth={national ? 5 : 7}
+                strokeOpacity={0.75}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={d}
+                fill="none"
+                stroke="#86efac"
                 strokeWidth={national ? 2.5 : 3.5}
                 strokeDasharray="6 4"
-                strokeOpacity={0.95}
+                strokeOpacity={1}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
               <g transform={`translate(${sx},${sy})`}>
-                <circle r="12" fill="#22c55e" fillOpacity="0.3" />
+                <circle r="14" fill="#064e3b" stroke="#4ade80" strokeWidth="2" />
                 <circle r="6" fill="#22c55e" stroke="#ffffff" strokeWidth="2" />
-                <text x="9" y="4" className="map-marker-label" fill="#86efac">
+                <rect x="18" y="-12" width={labelWidth} height="22" rx="5" fill="#09261df0" stroke="#4ade80" strokeWidth="1" />
+                <text x="26" y="3" className="map-marker-label" fill="#86efac" fontWeight="750" fontSize="11px">
                   {dispatch.safe_asset.name}
                 </text>
               </g>

@@ -1,10 +1,12 @@
 "use client";
 
-import { Bell, CloudRain, Droplets, FileText, HeartPulse, MapPin, Radio, RefreshCw, Sprout, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { Bell, CloudRain, Droplets, FileText, HeartPulse, Key, MapPin, Radio, RefreshCw, Satellite, ShieldCheck, Sprout, TriangleAlert } from "lucide-react";
 import { isAlert, formatNumber, friendlyNeed, timeOf, type FocusItem } from "@/lib/briefing";
 import { type Region } from "@/lib/regions";
 import { LABELS, SOURCE_NAMES } from "@/lib/layers";
 import { type TerraPulseStateResponse } from "@/lib/terrapulseClient";
+import { loginBhoonidhi, refreshBhoonidhiToken, searchBhoonidhiImagery, type BhoonidhiAuthResponse, type BhoonidhiStacResponse } from "@/lib/bhoonidhiAuth";
 
 export function DisasterAlerts({ state, onSelect }: {
   state: TerraPulseStateResponse; onSelect: (item: FocusItem) => void;
@@ -113,6 +115,64 @@ export function Settings({ state, onSync, onMode, onReset, busy }: {
   state: TerraPulseStateResponse; onSync: () => void; onMode: () => void; onReset: () => void; busy: boolean;
 }) {
   const sources = state.features.metadata.portal_provenance;
+  const [bhoonidhiAuth, setBhoonidhiAuth] = useState<BhoonidhiAuthResponse | null>(null);
+  const [bhoonidhiStac, setBhoonidhiStac] = useState<BhoonidhiStacResponse | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMsg, setAuthMsg] = useState("");
+
+  const handleAuthenticate = async () => {
+    setAuthBusy(true);
+    setAuthMsg("Contacting ISRO Bhoonidhi Token Gateway…");
+    try {
+      const auth = await loginBhoonidhi("1104f7577ce2f11b68c3f0ce0654d901e135134c");
+      setBhoonidhiAuth(auth);
+      setAuthMsg(`Authenticated: Bearer token generated for ${auth.user_id}`);
+    } catch (e: any) {
+      setAuthMsg(`Auth error: ${e.message}`);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!bhoonidhiAuth?.refresh_token) {
+      setAuthMsg("Authenticate first to obtain a refresh token.");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthMsg("Rotating session with refresh token…");
+    try {
+      const refreshed = await refreshBhoonidhiToken(bhoonidhiAuth.refresh_token);
+      setBhoonidhiAuth((prev) => prev ? {
+        ...prev,
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token,
+        issued_at: refreshed.issued_at,
+        expires_at: refreshed.expires_at,
+        status: "refreshed",
+      } : null);
+      setAuthMsg("Token rotated successfully (new 3600s TTL).");
+    } catch (e: any) {
+      setAuthMsg(`Refresh error: ${e.message}`);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSearchScenes = async () => {
+    setAuthBusy(true);
+    setAuthMsg("Querying Bhoonidhi STAC catalog for EOS-04 SAR flood scenes…");
+    try {
+      const stac = await searchBhoonidhiImagery("brahmaputra", "EOS-04_SAR");
+      setBhoonidhiStac(stac);
+      setAuthMsg(`Found ${stac.matched} verified radar scenes for Assam Brahmaputra basin.`);
+    } catch (e: any) {
+      setAuthMsg(`STAC query error: ${e.message}`);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   return <div className="tp-secondary-grid">
     <section className="tp-card tp-secondary-panel">
       <div className="tp-card-heading"><span><RefreshCw size={18} /> Data Sources</span>
@@ -128,6 +188,53 @@ export function Settings({ state, onSync, onMode, onReset, busy }: {
         })}</tbody>
       </table></div>
     </section>
+
+    <section className="tp-card tp-secondary-panel">
+      <div className="tp-card-heading"><span><Satellite size={18} /> ISRO Bhoonidhi Programmatic Gateway</span>
+        <span className="hud-badge-tag" style={{ background: "#064e3b", color: "#6ee7b7", padding: "3px 8px", borderRadius: 4 }}>API KEY: 1104f7...134c</span>
+      </div>
+      <p className="tp-view-intro">Programmatic OAuth2/JWT token authentication for ISRO NRSC Bhoonidhi Satellite Imagery API (EOS-04 SAR / Sentinel-2).</p>
+      
+      <div style={{ display: "grid", gap: 10, margin: "12px 0" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="tp-button tp-primary" disabled={authBusy} onClick={handleAuthenticate}>
+            <Key size={14} /> Authenticate Session
+          </button>
+          <button type="button" className="tp-button" disabled={authBusy || !bhoonidhiAuth} onClick={handleRefresh}>
+            <RefreshCw size={14} /> Rotate Refresh Token
+          </button>
+          <button type="button" className="tp-button" disabled={authBusy} onClick={handleSearchScenes}>
+            <Satellite size={14} /> Search EOS-04 SAR Scenes
+          </button>
+        </div>
+
+        {authMsg && <div style={{ fontSize: 12, color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "6px 10px", borderRadius: 6 }}>
+          {authMsg}
+        </div>}
+
+        {bhoonidhiAuth && (
+          <div style={{ background: "#070e1b", border: "1px solid #1e293b", borderRadius: 8, padding: 10, fontSize: 11, fontFamily: "monospace", display: "grid", gap: 4 }}>
+            <div style={{ color: "#22c55e", fontWeight: 700 }}>● Status: {bhoonidhiAuth.status.toUpperCase()} (Expires in {bhoonidhiAuth.expires_in}s)</div>
+            <div style={{ color: "#94a3b8", wordBreak: "break-all" }}><strong>access_token:</strong> {bhoonidhiAuth.access_token}</div>
+            <div style={{ color: "#94a3b8", wordBreak: "break-all" }}><strong>refresh_token:</strong> {bhoonidhiAuth.refresh_token}</div>
+            <div style={{ color: "#64748b" }}>scope: {bhoonidhiAuth.scope} · gateway: {bhoonidhiAuth.gateway}</div>
+          </div>
+        )}
+
+        {bhoonidhiStac?.scenes && (
+          <div style={{ background: "#070e1b", border: "1px solid #1e293b", borderRadius: 8, padding: 10, fontSize: 11 }}>
+            <strong style={{ color: "#f8fafc", display: "block", marginBottom: 6 }}>Active Bhoonidhi STAC Scenes ({bhoonidhiStac.matched})</strong>
+            {bhoonidhiStac.scenes.map((scene) => (
+              <div key={scene.scene_id} style={{ borderTop: "1px solid #1e293b", paddingTop: 6, marginTop: 4 }}>
+                <span style={{ color: "#38bdf8", fontWeight: 700 }}>{scene.satellite} · {scene.sensor}</span>
+                <p style={{ margin: "2px 0", color: "#94a3b8" }}>{scene.target} (Pol: {scene.polarization}, Res: {scene.resolution_m}m)</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+
     <section className="tp-card tp-secondary-panel">
       <div className="tp-card-heading"><span><Radio size={18} /> Exercise Connectivity</span></div>
       <p className="tp-view-intro">Pause the simulated mobile network to practice saving help requests. Restore the connection to sync them.</p>

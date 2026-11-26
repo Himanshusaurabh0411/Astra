@@ -233,9 +233,9 @@ export default function Dashboard() {
     log(activity(title, detail, "mesh"));
   });
 
-  const sendRoute = (area = brief.region) => run("Sending safe route…", async () => {
+  const sendRoute = (area = region) => run("Sending safe route…", async () => {
+    const targetRegion = region.id !== INDIA.id ? region : (area.id !== INDIA.id ? area : getRegion("central-india"));
     const corridorId = selection?.kind === "feature" && selection.feature.properties.road_status === "CORRIDOR" ? selection.feature.id : undefined;
-    const targetRegion = region.id !== INDIA.id ? region : area.id !== INDIA.id ? area : getRegion("central-india");
     const dispatch = await pushEvacuationDispatch({ region: targetRegion.id, corridor_id: corridorId });
     const title = dispatch.saved_locally ? "Route saved on this device" : "Safe route shared";
     const detail = dispatch.saved_locally ? `${dispatch.safe_asset.name} is available in the local map.`

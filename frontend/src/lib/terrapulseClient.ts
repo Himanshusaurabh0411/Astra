@@ -356,6 +356,15 @@ export async function fetchState(filter: StateFilter = {}): Promise<TerraPulseSt
     pendingSnapshot = (async () => {
       try {
         const data = await request<TerraPulseStateResponse>("/api/state");
+        if (localState.mode === "CELL_BLACKOUT_MESH_ACTIVE" && data.mode !== "CELL_BLACKOUT_MESH_ACTIVE") {
+          data.mode = "CELL_BLACKOUT_MESH_ACTIVE";
+          data.kpis = {
+            ...data.kpis,
+            cellular_online: false,
+            lora_mesh_active: true,
+            active_mesh_relays: Math.max(6, data.kpis.active_mesh_relays),
+          };
+        }
         return version === fetchGeneration ? remember(data, "api") : localState;
       } catch {
         if (version !== fetchGeneration) return localState;
@@ -498,7 +507,7 @@ export async function pushEvacuationDispatch(body: DispatchRequest): Promise<Dis
         safeLat = point[1];
         safeName = pair.asset.properties.title;
         path = pair.path;
-      } else if (targetRegion === "brahmaputra" || targetRegion.includes("assam")) {
+      } else if (targetRegion === "northeast-india" || targetRegion === "brahmaputra" || targetRegion.includes("assam") || targetRegion.includes("northeast")) {
         safeName = "Chandrapur High-Ground Evacuation Shelter (Guwahati)";
         safeLng = 91.920;
         safeLat = 26.190;
